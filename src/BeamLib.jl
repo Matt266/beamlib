@@ -111,19 +111,19 @@ function dsb_weights_k(x::PhasedArray1D, f, kx; fs=nothing,  c=c_0)
     return steerk(x, f, kx; fs=fs, c=c)/length(x.elements)
 end
 
-function dsb_weights(x::PhasedArray2D; f, ϕ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+function dsb_weights(x::PhasedArray2D, f, ϕ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
     return steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)/length(x.elements)
 end
 
-function dsb_weights_k(x::PhasedArray2D; f, kx, ky; fs=nothing,  c=c_0)
+function dsb_weights_k(x::PhasedArray2D, f, kx, ky; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky; fs=fs, c=c)/length(x.elements)
 end
 
-function dsb_weights(x::PhasedArray3D; f, ϕ, θ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+function dsb_weights(x::PhasedArray3D, f, ϕ, θ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
     return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/length(x.elements)
 end
 
-function dsb_weights_k(x::PhasedArray3D; f, kx, ky, kz; fs=nothing,  c=c_0)
+function dsb_weights_k(x::PhasedArray3D, f, kx, ky, kz; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky, kz; fs=fs, c=c)/length(x.elements)
 end
 
