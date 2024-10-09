@@ -1,6 +1,8 @@
 module BeamLib
 
 import Base.convert
+using Unitful
+using PhysicalConstants.CODATA2018: c_0
 
 @enum WaveDirection begin
     Incoming = -1
@@ -35,41 +37,49 @@ PhasedArray3D(x::PhasedArray2D{T})  where {T <: Number} = PhasedArray3D{T}([(e[1
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D{T}) where {T <: Number} = PhasedArray3D(x)
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D{T}) where {T <: Number} = PhasedArray3D(x)
 
-function steerphi(x::PhasedArray1D, f, phi; fs=nothing, c=299792458, direction::WaveDirection=Incoming)
-    zeta = cosd(phi)
-    zeta = zeta*Int(direction) # propagation direction
-    alpha = zeta/c # slowness vector
-    delta = alpha.*getindex.(x.elements, 1)
+function steerphi(x::PhasedArray1D, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    ζ = cosd(ϕ)
+    ζ = ζ*Int(direction) # propagation direction
+    α = ζ/c # slowness vector
+    Δ = α.*getindex.(x.elements, 1)
     if(!isnothing(fs))
-        delta = round.(delta*fs)/fs
+        Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*delta*2*pi*f)
+    return exp.(-1im*Δ*2π*f)
 end
 
-function steerphi(x::PhasedArray2D, f, phi; fs=nothing, c=299792458, direction::WaveDirection=Incoming)
-    zeta = [cosd(phi), sind(phi)] 
-    zeta = zeta*Int(direction) # propagation direction
-    alpha = zeta/c # slowness vector
-    delta = alpha[1].*getindex.(x.elements, 1) + alpha[2].*getindex.(x.elements, 2)
+function steerphi(x::PhasedArray2D, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    ζ = [cosd(ϕ), sind(ϕ)] 
+    ζ = ζ*Int(direction) # propagation direction
+    α = ζ/c # slowness vector
+    Δ = α[1].*getindex.(x.elements, 1) + α[2].*getindex.(x.elements, 2)
     if(!isnothing(fs))
-        delta = round.(delta*fs)/fs
+        Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*delta*2*pi*f)
+    return exp.(-1im*Δ*2π*f)
 end
 
-function steerphi(x::PhasedArray3D, f, phi, theta; fs=nothing, c=299792458, direction::WaveDirection=Incoming)
-    zeta = [cosd(phi)*sind(theta), sind(phi)*sind(theta), cosd(theta)] 
-    zeta = zeta*Int(direction) # propagation direction
-    alpha = zeta/c # slowness vector
-    delta = alpha[1].*getindex.(x.elements, 1) + alpha[2].*getindex.(x.elements, 2) + alpha[3].*getindex.(x.elements, 3)
+function steerphi(x::PhasedArray3D, f, ϕ, θ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    ζ = [cosd(ϕ)*sind(θ), sind(ϕ)*sind(θ), cosd(θ)] 
+    ζ = ζ*Int(direction) # propagation direction
+    α = ζ/c # slowness vector
+    Δ = α[1].*getindex.(x.elements, 1) + α[2].*getindex.(x.elements, 2) + α[3].*getindex.(x.elements, 3)
     if(!isnothing(fs))
-        delta = round.(delta*fs)/fs
+        Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*delta*2*pi*f)
+    return exp.(-1im*Δ*2π*f)
 end
 
-function dsb_weights(x::PhasedArray, f, phi; fs=nothing,  c=299792458, direction::WaveDirection=Incoming)
-    return steerphi(x, f, phi; fs=fs, c=c, direction=direction)/length(x.elements)
+function dsb_weights(x::PhasedArray1D, f, ϕ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+    return steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)/length(x.elements)
+end
+
+function dsb_weights(x::PhasedArray2D, f, ϕ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+    return steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)/length(x.elements)
+end
+
+function dsb_weights(x::PhasedArray3D, f, ϕ, θ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+    return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/length(x.elements)
 end
 
 end
