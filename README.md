@@ -7,10 +7,30 @@ While some other related packages do exist:
     - Beamforming.jl (https://juliapackages.com/p/beamforming)
     - SignalAnalysis.jl (https://github.com/org-arl/SignalAnalysis.jl)
 
-None of them are focused on simulation and evalution, support Unitful for usage of physical units, or
+none of them are focused on simulation and evalution, support Unitful for usage of physical units, or
 allow for deep customization.
 
 New functionality will be added to this package as needed.
+
+## How to install
+Since the package is not yet registered, it can't be downloaded the same way as registered packages. 
+Still, the process is fairly similiar. Open a julia REPL by tpying:
+
+```
+julia
+```
+
+Then, in this REPL, open julias package manager by typing:
+
+```
+]
+```
+
+And finally install the package via its gitlab link (same link you would use for cloning):
+
+```
+add https://gitlab.oth-regensburg.de/scm32482/beamlib.git
+```
 
 ## Examples
 Jupyter Notebooks with examples can be found in the examples directory
