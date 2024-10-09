@@ -1,7 +1,7 @@
 module BeamLib
 
 import Base.convert
-using Unitful
+using Unitful, UnitfulAngles
 using PhysicalConstants.CODATA2018: c_0
 
 @enum WaveDirection begin
@@ -38,36 +38,36 @@ Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D{T}) where {T <: Number} = P
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D{T}) where {T <: Number} = PhasedArray3D(x)
 
 function steerphi(x::PhasedArray1D, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    ζ = cosd(ϕ)
+    ζ = cos(ϕ)
     ζ = ζ*Int(direction) # propagation direction
     α = ζ/c # slowness vector
     Δ = α.*getindex.(x.elements, 1)
     if(!isnothing(fs))
         Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*Δ*2π*f)
+    return exp.(-1im*uconvert.(NoUnits, Δ*2π*f))
 end
 
 function steerphi(x::PhasedArray2D, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    ζ = [cosd(ϕ), sind(ϕ)] 
+    ζ = [cos(ϕ), sin(ϕ)] 
     ζ = ζ*Int(direction) # propagation direction
     α = ζ/c # slowness vector
     Δ = α[1].*getindex.(x.elements, 1) + α[2].*getindex.(x.elements, 2)
     if(!isnothing(fs))
         Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*Δ*2π*f)
+    return exp.(-1im*uconvert.(NoUnits, Δ*2π*f))
 end
 
 function steerphi(x::PhasedArray3D, f, ϕ, θ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    ζ = [cosd(ϕ)*sind(θ), sind(ϕ)*sind(θ), cosd(θ)] 
+    ζ = [cos(ϕ)*sin(θ), sin(ϕ)*sin(θ), cos(θ)] 
     ζ = ζ*Int(direction) # propagation direction
     α = ζ/c # slowness vector
     Δ = α[1].*getindex.(x.elements, 1) + α[2].*getindex.(x.elements, 2) + α[3].*getindex.(x.elements, 3)
     if(!isnothing(fs))
         Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*Δ*2π*f)
+    return exp.(-1im*uconvert.(NoUnits, Δ*2π*f))
 end
 
 function dsb_weights(x::PhasedArray1D, f, ϕ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
