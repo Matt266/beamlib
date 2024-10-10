@@ -1,8 +1,13 @@
 module BeamLib
-
 import Base.convert
+using LinearAlgebra
 using Unitful, UnitfulAngles
 using PhysicalConstants.CODATA2018: c_0
+
+export PhasedArray, PhasedArray1D, PhasedArray2D, PhasedArray3D, steerphi, steerk, 
+        dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
+        mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
+        whitenoise, diffnoise
 
 @enum WaveDirection begin
     Incoming = -1
@@ -125,6 +130,60 @@ end
 
 function dsb_weights_k(x::PhasedArray3D, f, kx, ky, kz; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky, kz; fs=fs, c=c)/length(x.elements)
+end
+
+function mvdr_weights(x::PhasedArray1D, Snn, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    v = steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)
+    return (inv(Snn)*v)/(v'*inv(Snn)*v)
+end
+
+function mvdr_weights_k(x::PhasedArray1D, Snn, f, kx; fs=nothing, c=c_0)
+    v = steerk(x, f, kx; fs=fs, c=c)
+    return (inv(Snn)*v)/(v'*inv(Snn)*v)
+end
+
+function mvdr_weights(x::PhasedArray2D, Snn, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    v = steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)
+    return (inv(Snn)*v)/(v'*inv(Snn)*v)
+end
+
+function mvdr_weights_k(x::PhasedArray2D, Snn, f, kx, ky; fs=nothing, c=c_0)
+    v = steerk(x, f, kx, ky; fs=fs, c=c)
+    return (inv(Snn)*v)/(v'*inv(Snn)*v)
+end
+
+function mvdr_weights(x::PhasedArray3D, Snn, f, ϕ, θ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    v = steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)
+    return (inv(Snn)*v)/(v'*inv(Snn)*v)
+end
+
+function mvdr_weights_k(x::PhasedArray3D, Snn, f, kx, ky, kz; fs=nothing, c=c_0)
+    v = steerk(x, f, kx, ky, kz; fs=fs, c=c)
+    return (inv(Snn)*v)/(v'*inv(Snn)*v)
+end
+
+mpdr_weights(x::PhasedArray1D, Sxx, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ; fs=fs, c=c, direction=direction)
+mpdr_weights_k(x::PhasedArray1D, Sxx, f, kx; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx; fs=fs, c=c)
+mpdr_weights(x::PhasedArray2D, Sxx, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ; fs=fs, c=c, direction=direction)
+mpdr_weights_k(x::PhasedArray2D, Sxx, f, kx, ky; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky; fs=fs, c=c)
+mpdr_weights(x::PhasedArray3D, Sxx, f, ϕ, θ; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
+mpdr_weights_k(x::PhasedArray3D, Sxx, f, kx, ky, kz; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky, kz; fs=fs, c=c)
+
+const capon_weights = mpdr_weights
+const capon_weights_k = mpdr_weights_k
+
+function whitenoise(x::PhasedArray, σ²)
+    return σ²*I(length(x.elements))
+end
+
+function diffnoise(x::PhasedArray, σ², f, c=c_0)
+    ω = 2π*f
+    k = ω/c
+    p(x, i) = [e for e in x.elements[i]] 
+    si(x) = sinc(x/π)
+    Γ(x, n, m, k) = si(uconvert(NoUnits,k*norm(p(x,m)-p(x,n))))
+    n = 1:length(x.elements)
+    return σ²*Γ.(Ref(x), n, n', Ref(k))
 end
 
 end
