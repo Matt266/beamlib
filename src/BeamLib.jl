@@ -19,8 +19,8 @@ struct PhasedArray1D <: PhasedArray
     elements::Vector{Tuple{Number}}
 end
 
-PhasedArray1D(elements::Tuple{Number}...) = PhasedArray1D([e for e in elements])
-PhasedArray1D(elements::Vector{Number}) = PhasedArray1D(map((x) -> (x,), elements))
+PhasedArray1D(elements::Tuple{<:Number}...) = PhasedArray1D([e for e in elements])
+PhasedArray1D(elements::Vector{<:Number}) = PhasedArray1D(map((x) -> (x,), elements))
 PhasedArray1D(elements::Number...) = PhasedArray1D([Tuple(e) for e in elements])
 
 struct PhasedArray2D <: PhasedArray
