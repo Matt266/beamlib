@@ -1,15 +1,13 @@
 module BeamLib
 import Base.convert
-using Unitful
 using LinearAlgebra
-using PhysicalConstants: CODATA2018
 
 export PhasedArray, PhasedArray1D, PhasedArray2D, PhasedArray3D, steerphi, steerk, 
         dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
         whitenoise, diffnoise
 
-c_0 = Float64(CODATA2018.c_0)
+c_0 = 299792458.0
 @enum WaveDirection begin
     Incoming = -1
     Outgoing = 1
