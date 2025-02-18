@@ -1,14 +1,11 @@
 # BeamLib.jl
 BeamLib is a Julia package for the evaluation of various beamformers. 
 
-While some other related packages do exist:
+Other related packages:
 
     - JuliaGNSS/PhasedArray.jl (https://github.com/JuliaGNSS/PhasedArray.jl)
     - Beamforming.jl (https://juliapackages.com/p/beamforming)
     - SignalAnalysis.jl (https://github.com/org-arl/SignalAnalysis.jl)
-
-none of them are focused on simulation and evalution, support Unitful for usage of physical units, or
-allow for deep customization.
 
 New functionality will be added to this package as needed.
 
