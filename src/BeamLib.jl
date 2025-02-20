@@ -51,7 +51,7 @@ Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D) = PhasedArray3D(x)
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D) = PhasedArray3D(x)
 
 struct NestedArray <: PhasedArray
-    subarrays::Vector{<:PhasedArray3D | <:ArrayManifold}
+    subarrays::Vector{<:PhasedArray3D || <:ArrayManifold}
     elements::PhasedArray3D
 end
 
