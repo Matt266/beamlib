@@ -2,7 +2,7 @@ module BeamLib
 import Base.convert
 using LinearAlgebra
 
-export PhasedArray, PhasedArray1D, PhasedArray2D, PhasedArray3D, steerphi, steerk, 
+export PhasedArray, PhasedArrayND, PhasedArray1D, PhasedArray2D, PhasedArray3D, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
         whitenoise, diffnoise
@@ -13,9 +13,19 @@ c_0 = 299792458.0
     Outgoing = 1
 end
 
+# generic phased arrays
 abstract type PhasedArray end
 
-struct PhasedArray1D <: PhasedArray
+# phased arrays with only isotropic radiators as elements 
+# perfect for quick evaluation of array factors
+abstract type PhasedArrayND <: PhasedArray end
+
+# placeholder for future implementations
+# TODO: implement
+abstract type ArrayManifold <: PhasedArray end
+abstract type NestedArray <: PhasedArray end
+
+struct PhasedArray1D <: PhasedArrayND
     elements::Vector{Tuple{Number}}
 end
 
@@ -23,7 +33,7 @@ PhasedArray1D(elements::Tuple{<:Number}...) = PhasedArray1D([e for e in elements
 PhasedArray1D(elements::Vector{<:Number}) = PhasedArray1D(map((x) -> (x,), elements))
 PhasedArray1D(elements::Number...) = PhasedArray1D([Tuple(e) for e in elements])
 
-struct PhasedArray2D <: PhasedArray
+struct PhasedArray2D <: PhasedArrayND
     elements::Vector{Tuple{Number, Number}}
 end
 
@@ -31,7 +41,7 @@ PhasedArray2D(elements::Tuple{Number, Number}...)= PhasedArray2D{Number}([e for 
 PhasedArray2D(x::PhasedArray1D)= PhasedArray2D([(e[1], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray2D}, x::PhasedArray1D) = PhasedArray2D(x)
 
-struct PhasedArray3D <: PhasedArray
+struct PhasedArray3D <: PhasedArrayND
     elements::Vector{Tuple{Number, Number, Number}}
 end
 
@@ -171,11 +181,11 @@ mpdr_weights_k(x::PhasedArray3D, Sxx, f, kx, ky, kz; fs=nothing, c=c_0) = mvdr_w
 const capon_weights = mpdr_weights
 const capon_weights_k = mpdr_weights_k
 
-function whitenoise(x::PhasedArray, σ²)
+function whitenoise(x::PhasedArrayND, σ²)
     return σ²*I(length(x.elements))
 end
 
-function diffnoise(x::PhasedArray, σ², f, c=c_0)
+function diffnoise(x::PhasedArrayND, σ², f, c=c_0)
     ω = 2π*f
     k = ω/c
     p(x, i) = [e for e in x.elements[i]] 
