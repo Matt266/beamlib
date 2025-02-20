@@ -71,8 +71,6 @@ function steerphi(x::PhasedArray3D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, directio
     return exp.(-1im*Δ*2π*f)
 end
 
-steerphi(x::PhasedArray3D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-
 function steerphi(x::NestedArray, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
     return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
