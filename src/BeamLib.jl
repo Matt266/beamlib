@@ -79,6 +79,10 @@ function Base.length(x::PhasedArrayND)
     return Base.length(x.elements)
 end
 
+function Base.length(x::NestedArray)
+    return sum(length.(x.subarrays))
+end
+
 function steerk(x::PhasedArray3D, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     k = 2π*f/c # wavenumber
     ζ = [kx/k, ky/k, kz/k] # propagation direction
@@ -94,11 +98,11 @@ steerk(x::PhasedArray2D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(
 steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
 
 function dsb_weights(x::PhasedArray, f, ϕ, θ=π/2; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
-    return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/Base.length(x.elements)
+    return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/Base.length(x)
 end
 
 function dsb_weights_k(x::PhasedArray, f, kx, ky=0, kz=0; fs=nothing,  c=c_0)
-    return steerk(x, f, kx, ky, kz; fs=fs, c=c)/Base.length(x.elements)
+    return steerk(x, f, kx, ky, kz; fs=fs, c=c)/Base.length(x)
 end
 
 function mvdr_weights(x::PhasedArray, Snn, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
@@ -118,7 +122,7 @@ const capon_weights = mpdr_weights
 const capon_weights_k = mpdr_weights_k
 
 function whitenoise(x::PhasedArrayND, σ²)
-    return σ²*I(Base.length(x.elements))
+    return σ²*I(Base.length(x))
 end
 
 function diffnoise(x::PhasedArrayND, σ², f, c=c_0)
@@ -127,7 +131,7 @@ function diffnoise(x::PhasedArrayND, σ², f, c=c_0)
     p(x, i) = [e for e in x.elements[i]] 
     si(x) = sinc(x/π)
     Γ(x, n, m, k) = si(k*norm(p(x,m)-p(x,n)))
-    n = 1:Base.length(x.elements)
+    n = 1:Base.length(x)
     return σ²*Γ.(Ref(x), n, n', Ref(k))
 end
 
