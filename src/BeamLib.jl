@@ -23,10 +23,9 @@ abstract type PhasedArrayND <: PhasedArray end
 # placeholder for future implementations
 # TODO: implement
 abstract type ArrayManifold <: PhasedArray end
-abstract type NestedArray <: PhasedArray end
 
 struct PhasedArray1D <: PhasedArrayND
-    elements::Vector{Tuple{Number}}
+    elements::Vector{Tuple{<:Number}}
 end
 
 PhasedArray1D(elements::Tuple{<:Number}...) = PhasedArray1D([e for e in elements])
@@ -34,22 +33,29 @@ PhasedArray1D(elements::Vector{<:Number}) = PhasedArray1D(map((x) -> (x,), eleme
 PhasedArray1D(elements::Number...) = PhasedArray1D([Tuple(e) for e in elements])
 
 struct PhasedArray2D <: PhasedArrayND
-    elements::Vector{Tuple{Number, Number}}
+    elements::Vector{Tuple{<:Number, <:Number}}
 end
 
-PhasedArray2D(elements::Tuple{Number, Number}...)= PhasedArray2D{Number}([e for e in elements])
+PhasedArray2D(elements::Tuple{<:Number, <:Number}...)= PhasedArray2D([e for e in elements])
 PhasedArray2D(x::PhasedArray1D)= PhasedArray2D([(e[1], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray2D}, x::PhasedArray1D) = PhasedArray2D(x)
 
 struct PhasedArray3D <: PhasedArrayND
-    elements::Vector{Tuple{Number, Number, Number}}
+    elements::Vector{Tuple{<:Number, <:Number, <:Number}}
 end
 
-PhasedArray3D(elements::Tuple{Number, Number, Number}...) = PhasedArray3D([e for e in elements])
+PhasedArray3D(elements::Tuple{<:Number, <:Number, <:Number}...) = PhasedArray3D([e for e in elements])
 PhasedArray3D(x::PhasedArray1D) = PhasedArray3D([(e[1], Base.convert(typeof(e[1]),0), Base.convert(typeof(e[1]),0)) for e in x.elements])
 PhasedArray3D(x::PhasedArray2D) = PhasedArray3D([(e[1], e[2], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D) = PhasedArray3D(x)
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D) = PhasedArray3D(x)
+
+struct NestedArray <: PhasedArray
+    subarrays::Vector{<:PhasedArray}
+    elements::PhasedArray3D
+end
+
+NestedArray()
 
 function steerphi(x::PhasedArray1D, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     ζ = cos(ϕ)
