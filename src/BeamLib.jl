@@ -55,7 +55,7 @@ struct NestedArray <: PhasedArray
     elements::PhasedArray3D
 end
 
-function steerphi(x::PhasedArray1D, f, ϕ, _; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+function steerphi(x::PhasedArray1D, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     ζ = cos(ϕ)
     ζ = ζ*Int(direction) # propagation direction
     α = ζ/c # slowness vector
@@ -93,7 +93,7 @@ function steerphi(x::NestedArray, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction:
     return [v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)]
 end
 
-function steerk(x::PhasedArray1D, f, kx; fs=nothing, c=c_0)
+function steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     k = 2π*f/c # wavenumber
     ζ = kx/k # propagation direction
     α = ζ/c # slowness vector
@@ -104,7 +104,7 @@ function steerk(x::PhasedArray1D, f, kx; fs=nothing, c=c_0)
     return exp.(-1im*Δ*2π*f)
 end
 
-function steerk(x::PhasedArray2D, f, kx, ky; fs=nothing, c=c_0)
+function steerk(x::PhasedArray2D, f, kx, ky, kz=0; fs=nothing, c=c_0)
     k = 2π*f/c # wavenumber
     ζ = [kx/k, ky/k] # propagation direction
     α = ζ/c # slowness vector
@@ -126,11 +126,11 @@ function steerk(x::PhasedArray3D, f, kx, ky, kz; fs=nothing, c=c_0)
     return exp.(-1im*Δ*2π*f)
 end
 
-function dsb_weights(x::PhasedArray1D, f, ϕ; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+function dsb_weights(x::PhasedArray1D, f, ϕ, θ=0; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
     return steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)/length(x.elements)
 end
 
-function dsb_weights_k(x::PhasedArray1D, f, kx; fs=nothing,  c=c_0)
+function dsb_weights_k(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing,  c=c_0)
     return steerk(x, f, kx; fs=fs, c=c)/length(x.elements)
 end
 
@@ -138,7 +138,7 @@ function dsb_weights(x::PhasedArray2D, f, ϕ, θ; fs=nothing,  c=c_0, direction:
     return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/length(x.elements)
 end
 
-function dsb_weights_k(x::PhasedArray2D, f, kx, ky; fs=nothing,  c=c_0)
+function dsb_weights_k(x::PhasedArray2D, f, kx, ky, kz=0; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky; fs=fs, c=c)/length(x.elements)
 end
 
@@ -150,12 +150,12 @@ function dsb_weights_k(x::PhasedArray3D, f, kx, ky, kz; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky, kz; fs=fs, c=c)/length(x.elements)
 end
 
-function mvdr_weights(x::PhasedArray1D, Snn, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+function mvdr_weights(x::PhasedArray1D, Snn, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x, f, ϕ; fs=fs, c=c, direction=direction)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
 
-function mvdr_weights_k(x::PhasedArray1D, Snn, f, kx; fs=nothing, c=c_0)
+function mvdr_weights_k(x::PhasedArray1D, Snn, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     v = steerk(x, f, kx; fs=fs, c=c)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
