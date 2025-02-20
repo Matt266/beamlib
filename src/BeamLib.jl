@@ -56,6 +56,14 @@ struct NestedArray <: PhasedArray
     elements::PhasedArray3D
 end
 
+function Base.length(x::PhasedArrayND)
+    return Base.length(x.elements)
+end
+
+function Base.length(x::NestedArray)
+    return sum(length.(x.subarrays))
+end
+
 function steerphi(x::PhasedArray3D, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     ζ = [cos(ϕ)*sin(θ), sin(ϕ)*sin(θ), cos(θ)] 
     ζ = ζ*Int(direction) # propagation direction
@@ -75,14 +83,6 @@ function steerphi(x::NestedArray, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::
     return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
 end
 
-function Base.length(x::PhasedArrayND)
-    return Base.length(x.elements)
-end
-
-function Base.length(x::NestedArray)
-    return sum(length.(x.subarrays))
-end
-
 function steerk(x::PhasedArray3D, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     k = 2π*f/c # wavenumber
     ζ = [kx/k, ky/k, kz/k] # propagation direction
@@ -96,6 +96,11 @@ end
 
 steerk(x::PhasedArray2D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
 steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
+
+function steerk(x::NestedArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
+    v = steerk(x.elements, kx, ky, kz, fs=fs, c=c)
+    return reduce(vcat, Tuple(v[i]*steerk(s, f, kx, ky, kz; fs=fs, c=c) for (i,s) in enumerate(x.subarrays)))
+end
 
 function dsb_weights(x::PhasedArray, f, ϕ, θ=π/2; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
     return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/Base.length(x)
