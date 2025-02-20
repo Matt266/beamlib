@@ -88,6 +88,11 @@ function steerphi(x::PhasedArray3D, f, ϕ, θ; fs=nothing, c=c_0, direction::Wav
     return exp.(-1im*Δ*2π*f)
 end
 
+function steerphi(x::NestedArray, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
+    return [v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)]
+end
+
 function steerk(x::PhasedArray1D, f, kx; fs=nothing, c=c_0)
     k = 2π*f/c # wavenumber
     ζ = kx/k # propagation direction
