@@ -1,6 +1,5 @@
 module BeamLib
 import Base.convert
-import Base.promote_rule
 using LinearAlgebra
 
 export PhasedArray, PhasedArrayND, PhasedArray1D, PhasedArray2D, PhasedArray3D, ArrayManifold, NestedArray, steerphi, steerk, 
@@ -40,7 +39,6 @@ end
 PhasedArray2D(elements::Tuple{<:Number, <:Number}...)= PhasedArray2D([e for e in elements])
 PhasedArray2D(x::PhasedArray1D)= PhasedArray2D([(e[1], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray2D}, x::PhasedArray1D) = PhasedArray2D(x)
-Base.promote_rule(::Type{<:PhasedArray2D}, ::Type{PhasedArray1D}) = PhasedArray2D
 
 struct PhasedArray3D <: PhasedArrayND
     elements::Vector{Tuple{<:Number, <:Number, <:Number}}
@@ -51,9 +49,6 @@ PhasedArray3D(x::PhasedArray1D) = PhasedArray3D([(e[1], Base.convert(typeof(e[1]
 PhasedArray3D(x::PhasedArray2D) = PhasedArray3D([(e[1], e[2], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D) = PhasedArray3D(x)
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D) = PhasedArray3D(x)
-
-Base.promote_rule(::Type{<:PhasedArray3D}, ::Type{PhasedArray1D}) = PhasedArray3D
-Base.promote_rule(::Type{<:PhasedArray3D}, ::Type{PhasedArray2D}) = PhasedArray3D
 
 struct NestedArray <: PhasedArray
     subarrays::Vector{<:PhasedArray}
@@ -71,6 +66,9 @@ function steerphi(x::PhasedArray3D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, directio
     return exp.(-1im*Δ*2π*f)
 end
 
+steerphi(x::PhasedArray2D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = steerphi(convert(PhasedArray3D, x), f, ϕ, θ; fs=fs, c=c, direction=direction)
+steerphi(x::PhasedArray1D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = steerphi(convert(PhasedArray3D, x), f, ϕ, θ; fs=fs, c=c, direction=direction)
+
 function steerphi(x::NestedArray, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
     return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
@@ -87,26 +85,29 @@ function steerk(x::PhasedArray3D, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     return exp.(-1im*Δ*2π*f)
 end
 
-function dsb_weights(x::PhasedArray3D, f, ϕ, θ=1/2π; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+steerk(x::PhasedArray2D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
+steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
+
+function dsb_weights(x::PhasedArray, f, ϕ, θ=1/2π; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
     return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/length(x.elements)
 end
 
-function dsb_weights_k(x::PhasedArray3D, f, kx, ky=0, kz=0; fs=nothing,  c=c_0)
+function dsb_weights_k(x::PhasedArray, f, kx, ky=0, kz=0; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky, kz; fs=fs, c=c)/length(x.elements)
 end
 
-function mvdr_weights(x::PhasedArray3D, Snn, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+function mvdr_weights(x::PhasedArray, Snn, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
 
-function mvdr_weights_k(x::PhasedArray3D, Snn, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
+function mvdr_weights_k(x::PhasedArray, Snn, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     v = steerk(x, f, kx, ky, kz; fs=fs, c=c)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
 
-mpdr_weights(x::PhasedArray3D, Sxx, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
-mpdr_weights_k(x::PhasedArray3D, Sxx, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky, kz; fs=fs, c=c)
+mpdr_weights(x::PhasedArray, Sxx, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
+mpdr_weights_k(x::PhasedArray, Sxx, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky, kz; fs=fs, c=c)
 
 const capon_weights = mpdr_weights
 const capon_weights_k = mpdr_weights_k
