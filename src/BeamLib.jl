@@ -98,7 +98,7 @@ steerk(x::PhasedArray2D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(
 steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
 
 function steerk(x::NestedArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
-    v = steerk(x.elements, kx, ky, kz, fs=fs, c=c)
+    v = steerk(x.elements, f, kx, ky, kz, fs=fs, c=c)
     return reduce(vcat, Tuple(v[i]*steerk(s, f, kx, ky, kz; fs=fs, c=c) for (i,s) in enumerate(x.subarrays)))
 end
 
