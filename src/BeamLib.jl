@@ -55,8 +55,6 @@ struct NestedArray <: PhasedArray
     elements::PhasedArray3D
 end
 
-NestedArray()
-
 function steerphi(x::PhasedArray1D, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     ζ = cos(ϕ)
     ζ = ζ*Int(direction) # propagation direction
