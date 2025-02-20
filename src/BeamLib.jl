@@ -90,7 +90,7 @@ end
 
 function steerphi(x::NestedArray, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
-    return [v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)]
+    return flatten([v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)])
 end
 
 function steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
@@ -165,7 +165,7 @@ function mvdr_weights(x::PhasedArray2D, Snn, f, ϕ, θ; fs=nothing, c=c_0, direc
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
 
-function mvdr_weights_k(x::PhasedArray2D, Snn, f, kx, ky; fs=nothing, c=c_0)
+function mvdr_weights_k(x::PhasedArray2D, Snn, f, kx, ky, kz=0; fs=nothing, c=c_0)
     v = steerk(x, f, kx, ky; fs=fs, c=c)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
@@ -180,10 +180,10 @@ function mvdr_weights_k(x::PhasedArray3D, Snn, f, kx, ky, kz; fs=nothing, c=c_0)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
 
-mpdr_weights(x::PhasedArray1D, Sxx, f, ϕ; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ; fs=fs, c=c, direction=direction)
-mpdr_weights_k(x::PhasedArray1D, Sxx, f, kx; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx; fs=fs, c=c)
+mpdr_weights(x::PhasedArray1D, Sxx, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ; fs=fs, c=c, direction=direction)
+mpdr_weights_k(x::PhasedArray1D, Sxx, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx; fs=fs, c=c)
 mpdr_weights(x::PhasedArray2D, Sxx, f, ϕ, θ; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
-mpdr_weights_k(x::PhasedArray2D, Sxx, f, kx, ky; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky; fs=fs, c=c)
+mpdr_weights_k(x::PhasedArray2D, Sxx, f, kx, ky, kz=0; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky; fs=fs, c=c)
 mpdr_weights(x::PhasedArray3D, Sxx, f, ϕ, θ; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
 mpdr_weights_k(x::PhasedArray3D, Sxx, f, kx, ky, kz; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky, kz; fs=fs, c=c)
 
