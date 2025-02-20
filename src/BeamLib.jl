@@ -1,5 +1,6 @@
 module BeamLib
 import Base.convert
+import Base.promote_rule
 using LinearAlgebra
 
 export PhasedArray, PhasedArrayND, PhasedArray1D, PhasedArray2D, PhasedArray3D, ArrayManifold, NestedArray, steerphi, steerk, 
@@ -39,6 +40,7 @@ end
 PhasedArray2D(elements::Tuple{<:Number, <:Number}...)= PhasedArray2D([e for e in elements])
 PhasedArray2D(x::PhasedArray1D)= PhasedArray2D([(e[1], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray2D}, x::PhasedArray1D) = PhasedArray2D(x)
+Base.promote_rule(::Type{<:PhasedArray2D}, ::Type{PhasedArray1D}) = PhasedArray2D
 
 struct PhasedArray3D <: PhasedArrayND
     elements::Vector{Tuple{<:Number, <:Number, <:Number}}
@@ -49,6 +51,9 @@ PhasedArray3D(x::PhasedArray1D) = PhasedArray3D([(e[1], Base.convert(typeof(e[1]
 PhasedArray3D(x::PhasedArray2D) = PhasedArray3D([(e[1], e[2], Base.convert(typeof(e[1]),0)) for e in x.elements])
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D) = PhasedArray3D(x)
 Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D) = PhasedArray3D(x)
+
+Base.promote_rule(::Type{<:PhasedArray3D}, ::Type{PhasedArray1D}) = PhasedArray3D
+Base.promote_rule(::Type{<:PhasedArray3D}, ::Type{PhasedArray2D}) = PhasedArray3D
 
 struct NestedArray <: PhasedArray
     subarrays::Vector{<:PhasedArray}
@@ -65,6 +70,8 @@ function steerphi(x::PhasedArray3D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, directio
     end
     return exp.(-1im*Δ*2π*f)
 end
+
+steerphi(x::PhasedArray3D, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
 
 function steerphi(x::NestedArray, f, ϕ, θ=1/2π; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
