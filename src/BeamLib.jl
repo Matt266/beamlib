@@ -6,7 +6,7 @@ using LinearAlgebra
 export PhasedArray, PhasedArrayND, PhasedArray1D, PhasedArray2D, PhasedArray3D, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
-        whitenoise, diffnoise
+        whitenoise, diffnoise, esprit
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -138,6 +138,56 @@ function diffnoise(x::PhasedArrayND, σ², f, c=c_0)
     Γ(x, n, m, k) = si(k*norm(p(x,m)-p(x,n)))
     n = 1:Base.length(x)
     return σ²*Γ.(Ref(x), n, n', Ref(k))
+end
+
+"""
+    esprit(Z, Δ, d, f, c=c_0)
+
+    Calculates the TLS esprit estimator for the direction of arrival.
+
+    arguments:
+    ----------
+        Z: data matrix, NOT covariance matrix
+        Δ: distance between both subarrays
+        d: number of sources or name of the estimator
+            for source detection
+        f: center/operating frequency
+        c: propagation speed of the wave
+"""
+function esprit(Z, Δ, d, f, c=c_0)
+    # number of sensors in the array (p)
+    # and the subarrays (ps)
+    p = size(Z)[1]
+    ps = Int(p/2)
+
+    U = eigvecs(1/size(Z)[2] * Z*Z')
+
+    #TODO: source detection
+    # d = ...
+
+    # obtain signal subspace estimate Es
+    Es = U[:,1:d]
+    Ex = Es[(1:ps),:]
+    Ey = Es[(1:ps).+(ps),:]
+
+    # estimate Φ by exploiting the array symmetry
+    E = eigvecs([Ex';Ey']*[Ex Ey])
+    E12 = E[1:d, (1:d).+d]
+    E22 = E[(1:d).+d, (1:d).+d]
+
+    # TLS
+    Ψ = -E12*inv(E22)
+
+    # LS
+    #Ψ = pinv(Ex)*Ey
+
+    #_, S, _ = svd(Ψ)
+    Φ = eigvals(Ψ)#S.^2
+
+    # calculate the directions of arrival (DoAs) from Φ
+    ks = c/(2π*f*Δ)
+    Θ = asin.((ks*angle.(Φ)))
+    return Θ
 end
 
 end
