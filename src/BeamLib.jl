@@ -160,7 +160,7 @@ function esprit(Z, Δ, d, f, c=c_0)
     p = size(Z)[1]
     ps = Int(p/2)
 
-    U = eigvecs(1/size(Z)[2] * Z*Z')
+    U, _ = svd(1/size(Z)[2] * Z*Z')
 
     #TODO: source detection
     # d = ...
@@ -171,7 +171,7 @@ function esprit(Z, Δ, d, f, c=c_0)
     Ey = Es[(1:ps).+(ps),:]
 
     # estimate Φ by exploiting the array symmetry
-    E = eigvecs([Ex';Ey']*[Ex Ey])
+    E, _ = svd([Ex';Ey']*[Ex Ey])
     E12 = E[1:d, (1:d).+d]
     E22 = E[(1:d).+d, (1:d).+d]
 
@@ -181,12 +181,12 @@ function esprit(Z, Δ, d, f, c=c_0)
     # LS
     #Ψ = pinv(Ex)*Ey
 
-    #_, S, _ = svd(Ψ)
-    Φ = eigvals(Ψ)#S.^2
+    U, S, _ = svd(Ψ)
+    Φ = S.^2
 
     # calculate the directions of arrival (DoAs) from Φ
     ks = c/(2π*f*Δ)
-    Θ = asin.((ks*angle.(Φ)))
+    Θ = asin.((ks*real.(Φ)))
     return Θ
 end
 
