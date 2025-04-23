@@ -3,7 +3,7 @@ import Base.convert
 import Base.length
 using LinearAlgebra
 
-export PhasedArray, PhasedArrayND, PhasedArray1D, PhasedArray2D, PhasedArray3D, ArrayManifold, NestedArray, steerphi, steerk, 
+export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
         whitenoise, diffnoise, esprit
@@ -17,85 +17,73 @@ end
 # generic phased arrays
 abstract type PhasedArray end
 
-# phased arrays with only isotropic radiators as elements 
-# perfect for quick evaluation of array factors
-abstract type PhasedArrayND <: PhasedArray end
-
 # placeholder for future implementations
 # TODO: implement
 abstract type ArrayManifold <: PhasedArray end
 
-struct PhasedArray1D <: PhasedArrayND
-    elements::Vector{Tuple{<:Number}}
+# phased arrays with only isotropic radiators as elements 
+# perfect for quick evaluation of array factors
+struct IsotropicArray <: PhasedArray
+    r::Matrix{<:Number}
+    function IsotropicArray(r::Matrix{<:Number})
+        @assert 1 <= size(r)[1] <= 3 "Found invalid shape of input matrix: $(size(r)[1])x$(size(r)[2]). Each column are the 1D, 2D, or 3D coordinates of an element. Input matrix must be of size 1xN, 2xN, or 3xN respectively"
+
+        if size(r)[1] == 1
+            return new([r; zeros(2, size(r)[2])])
+        elseif size(r)[1] == 2
+            return new([r; zeros(1, size(r)[2])])
+        else
+            return new(r)
+        end 
+    end
 end
 
-PhasedArray1D(elements::Tuple{<:Number}...) = PhasedArray1D([e for e in elements])
-PhasedArray1D(elements::Vector{<:Number}) = PhasedArray1D(map((x) -> (x,), elements))
-PhasedArray1D(elements::Number...) = PhasedArray1D([Tuple(e) for e in elements])
-
-struct PhasedArray2D <: PhasedArrayND
-    elements::Vector{Tuple{<:Number, <:Number}}
+function IsotropicArray(r::Vector{<:Number})
+    return IsotropicArray(reshape(r, 1, length(r)))
 end
 
-PhasedArray2D(elements::Tuple{<:Number, <:Number}...)= PhasedArray2D([e for e in elements])
-PhasedArray2D(x::PhasedArray1D)= PhasedArray2D([(e[1], Base.convert(typeof(e[1]),0)) for e in x.elements])
-Base.convert(::Type{PhasedArray2D}, x::PhasedArray1D) = PhasedArray2D(x)
+IsotropicArray(elements::Number...) = IsotropicArray([e for e in elements])
 
-struct PhasedArray3D <: PhasedArrayND
-    elements::Vector{Tuple{<:Number, <:Number, <:Number}}
-end
-
-PhasedArray3D(elements::Tuple{<:Number, <:Number, <:Number}...) = PhasedArray3D([e for e in elements])
-PhasedArray3D(x::PhasedArray1D) = PhasedArray3D([(e[1], Base.convert(typeof(e[1]),0), Base.convert(typeof(e[1]),0)) for e in x.elements])
-PhasedArray3D(x::PhasedArray2D) = PhasedArray3D([(e[1], e[2], Base.convert(typeof(e[1]),0)) for e in x.elements])
-Base.convert(::Type{PhasedArray3D}, x::PhasedArray1D) = PhasedArray3D(x)
-Base.convert(::Type{PhasedArray3D}, x::PhasedArray2D) = PhasedArray3D(x)
 
 struct NestedArray <: PhasedArray
+    elements::IsotropicArray
     subarrays::Vector{<:PhasedArray}
-    elements::PhasedArray3D
 end
 
-function Base.length(x::PhasedArrayND)
-    return Base.length(x.elements)
+function Base.length(x::IsotropicArray)
+    return size(x.r)[2]
 end
 
 function Base.length(x::NestedArray)
     return sum(length.(x.subarrays))
 end
 
-function steerphi(x::PhasedArray3D, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+function steerphi(x::IsotropicArray, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     ζ = [cos(ϕ)*sin(θ), sin(ϕ)*sin(θ), cos(θ)] 
     ζ = ζ*Int(direction) # propagation direction
     α = ζ/c # slowness vector
-    Δ = α[1].*getindex.(x.elements, 1) + α[2].*getindex.(x.elements, 2) + α[3].*getindex.(x.elements, 3)
+    Δ = Vector(vec(α'*x.r))
     if(!isnothing(fs))
         Δ = round.(Δ*fs)/fs
     end
     return exp.(-1im*Δ*2π*f)
 end
-
-steerphi(x::PhasedArray2D, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = steerphi(convert(PhasedArray3D, x), f, ϕ, θ; fs=fs, c=c, direction=direction)
-steerphi(x::PhasedArray1D, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = steerphi(convert(PhasedArray3D, x), f, ϕ, θ; fs=fs, c=c, direction=direction)
 
 function steerphi(x::NestedArray, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
     return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
 end
 
-function steerk(x::PhasedArray3D, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
+function steerk(x::IsotropicArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     k = 2π*f/c # wavenumber
     ζ = [kx/k, ky/k, kz/k] # propagation direction
     α = ζ/c # slowness vector
-    Δ = α[1].*getindex.(x.elements, 1) + α[2].*getindex.(x.elements, 2) + α[3].*getindex.(x.elements, 3)
+    Δ =  Vector(vec(α'*x.r))
     if(!isnothing(fs))
         Δ = round.(Δ*fs)/fs
     end
     return exp.(-1im*Δ*2π*f)
 end
-
-steerk(x::PhasedArray2D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
-steerk(x::PhasedArray1D, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = steerk(convert(PhasedArray3D, x), f, kx, ky, kz; fs=fs, c=c)
 
 function steerk(x::NestedArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     v = steerk(x.elements, f, kx, ky, kz, fs=fs, c=c)
@@ -126,14 +114,14 @@ mpdr_weights_k(x::PhasedArray, Sxx, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = mvdr
 const capon_weights = mpdr_weights
 const capon_weights_k = mpdr_weights_k
 
-function whitenoise(x::PhasedArrayND, σ²)
+function whitenoise(x::IsotropicArray, σ²)
     return σ²*I(Base.length(x))
 end
 
-function diffnoise(x::PhasedArrayND, σ², f, c=c_0)
+function diffnoise(x::IsotropicArray, σ², f, c=c_0)
     ω = 2π*f
     k = ω/c
-    p(x, i) = [e for e in x.elements[i]] 
+    p(x, i) = [e for e in x.r[:,i]] 
     si(x) = sinc(x/π)
     Γ(x, n, m, k) = si(k*norm(p(x,m)-p(x,n)))
     n = 1:Base.length(x)
