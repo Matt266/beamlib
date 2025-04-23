@@ -174,7 +174,7 @@ function esprit(Z, Δ, d, f, c=c_0)
 
     # calculate the directions of arrival (DoAs) from Φ
     ks = c/(2π*f*Δ)
-    Θ = asin.((ks*real.(Φ)))
+    Θ = asin.((ks*angle.(Φ)))
     return Θ
 end
 
