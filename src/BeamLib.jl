@@ -8,7 +8,7 @@ export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
         whitenoise, diffnoise, esprit
 
-c_0 = 299792458.0
+c_0 = 3e8#299792458.0
 @enum WaveDirection begin
     Incoming = -1
     Outgoing = 1
@@ -58,9 +58,16 @@ function Base.length(x::NestedArray)
     return sum(length.(x.subarrays))
 end
 
-function steerphi(x::IsotropicArray, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    ζ = [cos(ϕ)*sin(θ), sin(ϕ)*sin(θ), cos(θ)] 
-    ζ = ζ*Int(direction) # propagation direction
+function steerphi(x::IsotropicArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+    if direction == Incoming
+        ζ = [-cos(ϕ)*cos(θ), -sin(ϕ)*cos(θ), -sin(θ)]
+    else
+        ζ = [cos(ϕ)*cos(θ), sin(ϕ)*cos(θ), sin(θ)]
+    end
+
+    # Matlab orientation
+    # ζ = [-cos(ϕ)*cos(θ), -sin(ϕ)*cos(θ), -sin(θ)]
+
     α = ζ/c # slowness vector
     Δ = Vector(vec(α'*x.r))
     if(!isnothing(fs))
@@ -69,7 +76,7 @@ function steerphi(x::IsotropicArray, f, ϕ, θ=π/2; fs=nothing, c=c_0, directio
     return exp.(-1im*Δ*2π*f)
 end
 
-function steerphi(x::NestedArray, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+function steerphi(x::NestedArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
     return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
 end
@@ -90,7 +97,7 @@ function steerk(x::NestedArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
     return reduce(vcat, Tuple(v[i]*steerk(s, f, kx, ky, kz; fs=fs, c=c) for (i,s) in enumerate(x.subarrays)))
 end
 
-function dsb_weights(x::PhasedArray, f, ϕ, θ=π/2; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
+function dsb_weights(x::PhasedArray, f, ϕ, θ=0; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
     return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/Base.length(x)
 end
 
@@ -98,7 +105,7 @@ function dsb_weights_k(x::PhasedArray, f, kx, ky=0, kz=0; fs=nothing,  c=c_0)
     return steerk(x, f, kx, ky, kz; fs=fs, c=c)/Base.length(x)
 end
 
-function mvdr_weights(x::PhasedArray, Snn, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
+function mvdr_weights(x::PhasedArray, Snn, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
@@ -108,7 +115,7 @@ function mvdr_weights_k(x::PhasedArray, Snn, f, kx, ky=0, kz=0; fs=nothing, c=c_
     return (inv(Snn)*v)/(v'*inv(Snn)*v)
 end
 
-mpdr_weights(x::PhasedArray, Sxx, f, ϕ, θ=π/2; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
+mpdr_weights(x::PhasedArray, Sxx, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
 mpdr_weights_k(x::PhasedArray, Sxx, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky, kz; fs=fs, c=c)
 
 const capon_weights = mpdr_weights
@@ -145,21 +152,24 @@ end
 function esprit(Z, Δ, d, f, c=c_0)
     # number of sensors in the array (p)
     # and the subarrays (ps)
-    p = size(Z)[1]
-    ps = Int(p/2)
+    p = 4
+    ps = 3
 
-    U, _ = svd(1/size(Z)[2] * Z*Z')
+    # Forward spatial smoothing
+    Rzz = 1/size(Z)[2] * Z*Z'
+
+    U = eigvecs(Rzz)
 
     #TODO: source detection
     # d = ...
 
     # obtain signal subspace estimate Es
     Es = U[:,1:d]
-    Ex = Es[(1:ps),:]
-    Ey = Es[(1:ps).+(ps),:]
+    Ex = Es[(1:2),:]
+    Ey = Es[(2:3),:]
 
     # estimate Φ by exploiting the array symmetry
-    E, _ = svd([Ex';Ey']*[Ex Ey])
+    E = eigvecs([Ex';Ey']*[Ex Ey])
     E12 = E[1:d, (1:d).+d]
     E22 = E[(1:d).+d, (1:d).+d]
 
@@ -169,12 +179,11 @@ function esprit(Z, Δ, d, f, c=c_0)
     # LS
     #Ψ = pinv(Ex)*Ey
 
-    U, S, _ = svd(Ψ)
-    Φ = S.^2
+    Φ = eigvals(Ψ)
 
     # calculate the directions of arrival (DoAs) from Φ
-    ks = c/(2π*f*Δ)
-    Θ = asin.((ks*angle.(Φ)))
+    k = (2π*f)/c
+    Θ = asin.(angle.(Φ)/(k*Δ))
     return Θ
 end
 
