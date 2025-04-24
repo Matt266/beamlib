@@ -8,7 +8,7 @@ export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
         whitenoise, diffnoise, esprit
 
-c_0 = 3e8#299792458.0
+c_0 = 299792458.0
 @enum WaveDirection begin
     Incoming = -1
     Outgoing = 1
