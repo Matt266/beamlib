@@ -142,7 +142,8 @@ end
 
     arguments:
     ----------
-        Z: data matrix, NOT covariance matrix
+        Z: data matrix of total array (both subarrays vertically concatenated),
+            NOT covariance matrix
         Δ: distance between both subarrays
         d: number of sources or name of the estimator
             for source detection
@@ -152,6 +153,11 @@ end
             least squares if 'false'
 """
 function esprit(Z, Δ, d, f; c=c_0, TLS = true)
+    # number of sensors in the array (p)
+    # and the subarrays (ps)
+    p = size(Z)[1]
+    ps = Int(p/2)
+
     Rzz = 1/size(Z)[2] * Z*Z'
     U = eigvecs(Rzz, sortby= λ -> -abs(λ))
 
@@ -159,9 +165,11 @@ function esprit(Z, Δ, d, f; c=c_0, TLS = true)
     # d = ...
 
     # obtain signal subspace estimate Es
+
     Es = U[:,1:d]
-    Ex = Es[(1:2),:]
-    Ey = Es[(2:3),:]
+    Ex = Es[(1:ps),:]
+    Ey = Es[(1:ps).+(ps),:]
+
 
     # estimate Φ by exploiting the array symmetry
     if(TLS)
