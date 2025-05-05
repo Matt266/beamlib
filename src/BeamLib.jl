@@ -148,16 +148,11 @@ end
             for source detection
         f: center/operating frequency
         c: propagation speed of the wave
+        TLS: calculates total least squares solution if 'true' (default),
+            least squares if 'false'
 """
-function esprit(Z, Δ, d, f, c=c_0)
-    # number of sensors in the array (p)
-    # and the subarrays (ps)
-    p = 4
-    ps = 3
-
-    # Forward spatial smoothing
+function esprit(Z, Δ, d, f; c=c_0, TLS = true)
     Rzz = 1/size(Z)[2] * Z*Z'
-
     U = eigvecs(Rzz, sortby= λ -> -abs(λ))
 
     #TODO: source detection
@@ -169,15 +164,17 @@ function esprit(Z, Δ, d, f, c=c_0)
     Ey = Es[(2:3),:]
 
     # estimate Φ by exploiting the array symmetry
-    E = eigvecs([Ex';Ey']*[Ex Ey], sortby= λ -> -abs(λ))
-    E12 = E[1:d, (1:d).+d]
-    E22 = E[(1:d).+d, (1:d).+d]
+    if(TLS)
+        # TLS-ESPRIT
+        E = eigvecs([Ex';Ey']*[Ex Ey], sortby= λ -> -abs(λ))
+        E12 = E[1:d, (1:d).+d]
+        E22 = E[(1:d).+d, (1:d).+d]
+        Ψ = -E12*inv(E22)
+    else
+        # LS-ESPRIT
+        Ψ = pinv(Ex)*Ey
+    end
 
-    # TLS
-    Ψ = -E12*inv(E22)
-
-    # LS
-    #Ψ = pinv(Ex)*Ey
     Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
 
     # calculate the directions of arrival (DoAs) from Φ
