@@ -158,7 +158,7 @@ function esprit(Z, Δ, d, f, c=c_0)
     # Forward spatial smoothing
     Rzz = 1/size(Z)[2] * Z*Z'
 
-    U, _ = svd(Rzz)
+    U = eigvecs(Rzz, sortby= λ -> -abs(λ))
 
     #TODO: source detection
     # d = ...
@@ -169,7 +169,7 @@ function esprit(Z, Δ, d, f, c=c_0)
     Ey = Es[(2:3),:]
 
     # estimate Φ by exploiting the array symmetry
-    E, _ = svd([Ex';Ey']*[Ex Ey])
+    E = eigvecs([Ex';Ey']*[Ex Ey], sortby= λ -> -abs(λ))
     E12 = E[1:d, (1:d).+d]
     E22 = E[(1:d).+d, (1:d).+d]
 
@@ -178,9 +178,7 @@ function esprit(Z, Δ, d, f, c=c_0)
 
     # LS
     #Ψ = pinv(Ex)*Ey
-
-    unused, Φ, _ = svd(Ψ)
-    Φ = Φ.^2
+    Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
 
     # calculate the directions of arrival (DoAs) from Φ
     k = (2π*f)/c
