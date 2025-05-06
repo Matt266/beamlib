@@ -6,7 +6,7 @@ using LinearAlgebra
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k,
-        whitenoise, diffnoise, esprit
+        whitenoise, diffnoise, esprit, music
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -136,21 +136,21 @@ function diffnoise(x::IsotropicArray, σ², f, c=c_0)
 end
 
 """
-    esprit(Z, Δ, d, f, c=c_0)
+esprit(Z, Δ, d, f, c=c_0)
 
-    Calculates the TLS esprit estimator for the direction of arrival.
+Calculates the TLS esprit estimator for the direction of arrival.
 
-    arguments:
-    ----------
-        Z: data matrix of total array (both subarrays vertically concatenated),
-            NOT covariance matrix
-        Δ: distance between both subarrays
-        d: number of sources or name of the estimator
-            for source detection
-        f: center/operating frequency
-        c: propagation speed of the wave
-        TLS: calculates total least squares solution if 'true' (default),
-            least squares if 'false'
+arguments:
+----------
+    Z: data matrix of total array (both subarrays vertically concatenated),
+        NOT covariance matrix
+    Δ: distance between both subarrays
+    d: number of sources or name of the estimator
+        for source detection
+    f: center/operating frequency
+    c: propagation speed of the wave
+    TLS: calculates total least squares solution if 'true' (default),
+        least squares if 'false'
 """
 function esprit(Z, Δ, d, f; c=c_0, TLS = true)
     # number of sensors in the array (p)
@@ -189,6 +189,38 @@ function esprit(Z, Δ, d, f; c=c_0, TLS = true)
     k = (2π*f)/c
     Θ = asin.(angle.(Φ)/(k*Δ))
     return Θ
+end
+
+"""
+music(pa::PhasedArray, X, d, f, ϕ, θ=0; fs=nothing, c=c_0)
+
+Calculates the MUSIC spectrum for direction of arrival estimation.
+
+arguments:
+----------
+    pa: PhasedArray to calculate the MUSIC spectrum for
+    X: data matrix of the array which is used for estimation
+    d: number of sources or name of the estimator
+        for source detection
+    f: center/operating frequency
+    ϕ: azimuth angle for which spectrum is evaluated 
+    θ: elevation angle for which spectrum is evaluated
+    fs: sampling frequency of the steering vector to quantize phase shifts
+    c: propagation speed of the wave
+"""
+function music(pa::PhasedArray, X, d, f, ϕ, θ=0; fs=nothing, c=c_0)
+    Rxx = 1/size(X)[2] * X*X'
+    U = eigvecs(Rxx, sortby= λ -> -abs(λ))
+
+    #TODO: source detection
+    # d = ...
+
+    Un = U[:, d+1:size(U)[2]]
+
+    a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
+
+    P = a'*a/(a'*Un*Un'*a)
+    return P
 end
 
 end
