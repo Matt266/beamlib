@@ -136,7 +136,7 @@ function diffnoise(x::IsotropicArray, σ², f, c=c_0)
 end
 
 """
-bartlett(pa::PhasedArray, X, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
+bartlett(pa::PhasedArray, Rxx, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
 
 Calculates the bartlett spectrum for direction of arrival estimation.
 This is identically to steering a bartlett (delay-and-sum) beamformer and measuring the 
@@ -146,7 +146,7 @@ and data is just more convenient for DoA estimation.
 arguments:
 ----------
     pa: PhasedArray to calculate the MUSIC spectrum for
-    X: data matrix of the array which is used for estimation
+    Rxx: covariance matrix of the array which is used for estimation
     f: center/operating frequency
     ϕ: azimuth angle for which spectrum is evaluated 
     θ: elevation angle for which spectrum is evaluated
@@ -154,7 +154,7 @@ arguments:
     fs: sampling frequency of the steering vector to quantize phase shifts
     c: propagation speed of the wave
 """
-function bartlett(pa::PhasedArray, X, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
+function bartlett(pa::PhasedArray, Rxx, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
     
     if isnothing(w)
         W = Matrix(I, Base.length(pa), Base.length(pa))
@@ -163,7 +163,6 @@ function bartlett(pa::PhasedArray, X, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
         W = diagm(vec(w))
     end
 
-    Rxx = 1/size(X)[2] * X*X'
     a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
     P = a'*W*Rxx*W'*a
     return P
@@ -171,7 +170,7 @@ end
 
 
 """
-capon(pa::PhasedArray, X, f, ϕ, θ=0; fs=nothing, c=c_0)
+capon(pa::PhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
 
 Calculates the capon spectrum for direction of arrival estimation.
 This is identically to steering a capon beamformer and measuring the 
@@ -181,50 +180,41 @@ and data is just more convenient for DoA estimation.
 arguments:
 ----------
     pa: PhasedArray to calculate the MUSIC spectrum for
-    X: data matrix of the array which is used for estimation
+    Rxx: covariance matrix of the array which is used for estimation
     f: center/operating frequency
     ϕ: azimuth angle for which spectrum is evaluated 
     θ: elevation angle for which spectrum is evaluated
     fs: sampling frequency of the steering vector to quantize phase shifts
     c: propagation speed of the wave
 """
-function capon(pa::PhasedArray, X, f, ϕ, θ=0; fs=nothing, c=c_0)
-    Rxx = 1/size(X)[2] * X*X'
+function capon(pa::PhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
     a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
     P = 1/(a'*inv(Rxx)'*a)
     return P
 end
 
 """
-esprit(Z, Δ, d, f, c=c_0)
+esprit(Rzz, Δ, d, f, c=c_0)
 
 Calculates the TLS esprit estimator for the direction of arrival.
 
 arguments:
 ----------
-    Z: data matrix of total array (both subarrays vertically concatenated),
-        NOT covariance matrix
+    Rzz: covariance matrix of total array (both subarrays vertically concatenated),
     Δ: distance between both subarrays
-    d: number of sources or name of the estimator
-        for source detection
+    d: number of sources
     f: center/operating frequency
     c: propagation speed of the wave
     TLS: calculates total least squares solution if 'true' (default),
         least squares if 'false'
 """
-function esprit(Z, Δ, d, f; c=c_0, TLS = true)
+function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
     # number of sensors in the array (p)
     # and the subarrays (ps)
-    p = size(Z)[1]
+    p = size(Rzz)[1]
     ps = Int(p/2)
 
-    Rzz = 1/size(Z)[2] * Z*Z'
     U = eigvecs(Rzz, sortby= λ -> -abs(λ))
-
-    #TODO: source detection
-    # d = ...
-
-    # obtain signal subspace estimate Es
 
     Es = U[:,1:d]
     Ex = Es[(1:ps),:]
@@ -252,28 +242,23 @@ function esprit(Z, Δ, d, f; c=c_0, TLS = true)
 end
 
 """
-music(pa::PhasedArray, X, d, f, ϕ, θ=0; fs=nothing, c=c_0)
+music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
 
 Calculates the MUSIC spectrum for direction of arrival estimation.
 
 arguments:
 ----------
     pa: PhasedArray to calculate the MUSIC spectrum for
-    X: data matrix of the array which is used for estimation
-    d: number of sources or name of the estimator
-        for source detection
+    Rxx: covariance matrix of the array which is used for estimation
+    d: number of sources
     f: center/operating frequency
     ϕ: azimuth angle for which spectrum is evaluated 
     θ: elevation angle for which spectrum is evaluated
     fs: sampling frequency of the steering vector to quantize phase shifts
     c: propagation speed of the wave
 """
-function music(pa::PhasedArray, X, d, f, ϕ, θ=0; fs=nothing, c=c_0)
-    Rxx = 1/size(X)[2] * X*X'
+function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
     U = eigvecs(Rxx, sortby= λ -> -abs(λ))
-
-    #TODO: source detection
-    # d = ...
 
     Un = U[:, d+1:size(U)[2]]
 
