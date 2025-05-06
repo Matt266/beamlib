@@ -4,7 +4,7 @@ import Base.length
 using LinearAlgebra
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
-        dsb_weights, dsb_weights_k, mvdr_weights, mvdr_weights_k,
+        dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
         whitenoise, diffnoise, esprit, music
 
@@ -133,6 +133,40 @@ function diffnoise(x::IsotropicArray, σ², f, c=c_0)
     Γ(x, n, m, k) = si(k*norm(p(x,m)-p(x,n)))
     n = 1:Base.length(x)
     return σ²*Γ.(Ref(x), n, n', Ref(k))
+end
+
+"""
+bartlett(pa::PhasedArray, X, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
+
+Calculates the bartlett spectrum for direction of arrival estimation.
+This is identically to steering a bartlett (delay-and-sum) beamformer and measuring the 
+output power. Directly outputing the power spectrum for a given angle 
+and data is just more convenient for DoA estimation.
+
+arguments:
+----------
+    pa: PhasedArray to calculate the MUSIC spectrum for
+    X: data matrix of the array which is used for estimation
+    f: center/operating frequency
+    ϕ: azimuth angle for which spectrum is evaluated 
+    θ: elevation angle for which spectrum is evaluated
+    w: vector of taper weights for the array (e.g., chebyshev window) 
+    fs: sampling frequency of the steering vector to quantize phase shifts
+    c: propagation speed of the wave
+"""
+function bartlett(pa::PhasedArray, X, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
+    
+    if isnothing(w)
+        W = Matrix(I, Base.length(pa), Base.length(pa))
+    else 
+        assert(Base.length(w) == Base.length(pa))
+        W = diagm(vec(w))
+    end
+
+    Rxx = 1/size(X)[2] * X*X'
+    a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
+    P = a'*W*Rxx*W'*a
+    return P
 end
 
 
