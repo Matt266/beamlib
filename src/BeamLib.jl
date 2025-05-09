@@ -225,7 +225,7 @@ function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
     # estimate Φ by exploiting the array symmetry
     if(TLS)
         # TLS-ESPRIT
-        E = eigvecs([Ex';Ey']*[Ex Ey], sortby= λ -> -abs(λ))
+        E = eigvecs([Ex Ey]'*[Ex Ey], sortby= λ -> -abs(λ))
         E12 = E[1:d, (1:d).+d]
         E22 = E[(1:d).+d, (1:d).+d]
         Ψ = -E12*inv(E22)
@@ -239,6 +239,74 @@ function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
     # calculate the directions of arrival (DoAs) from Φ
     k = (2π*f)/c
     Θ = asin.(angle.(Φ)/(k*Δ))
+    return Θ
+end
+
+"""
+unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
+
+Calculates the DoAs using the unitary esprit.
+Requires a centrosymmetric array geometry.
+
+arguments:
+----------
+    X: data matrix of the array (NO CONCATENATION of subarrays)
+    J1: selection matrix for the first subarray
+    Δ: distance between both subarrays
+    d: number of sources
+    f: center/operating frequency
+    c: propagation speed of the wave
+    TLS: calculates total least squares solution if 'true' (default),
+        least squares if 'false'
+"""
+function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
+    # NxN exchange matrix
+    II(N) = begin
+        return rotl90(Matrix(I,N,N))
+    end
+    
+    # unitary matrices
+    Q(N) = begin
+        @assert N>=2
+        n = Int(floor(N/2))
+        if N%2 == 0
+            # N even
+            [I(n) 1im*I(n); II(n) -1im*II(n)]/sqrt(2)
+        else
+            # N odd
+            [I(n) 0 1im*I(n); zeros(1,n) sqrt(2) zeros(1, n); II(n) 0 -1im*II(n)]/sqrt(2)
+        end
+    end
+
+    m = size(J1)[1] # number elements in subarray
+    M = size(J1)[2] # number elements in array
+    K1 = Q(m)'*(J1+II(m)*J1*II(M))*Q(M)
+    K2 = Q(m)'*1im*(J1-II(m)*J1*II(M))*Q(M)
+
+    Y = Q(M)'*X
+    U, _ = svd([real(Y) imag(Y)])
+    Es = U[:,1:d]
+
+    C1 = K1*Es
+    C2 = K2*Es
+
+    if(TLS)
+        # TLS solution
+        E, _ = svd([C1 C2]'*[C1 C2])
+        E12 = E[1:d, (1:d).+d]
+        E22 = E[(1:d).+d, (1:d).+d]
+        Ψ = -E12*inv(E22)
+    else
+        # LS solution
+        Ψ = pinv(C1)*C2
+    end
+
+    Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
+
+    # calculate the directions of arrival (DoAs) from Φ
+    Μ = 2atan.(real(Φ))
+    k = (2π*f)/c
+    Θ = asin.(Μ/(k*Δ))
     return Θ
 end
 
@@ -267,76 +335,6 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
 
     P = a'*a/(a'*Un*Un'*a)
     return P
-end
-
-# TODO: still WIP
-function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
-    # NxN exchange matrix
-    II(N) = begin
-        return rotl90(Matrix(I,N,N))
-    end
-    
-    # unitary matrices
-    Q(N) = begin
-        @assert N>=2
-        n = Int(floor(N/2))
-        if N%2 == 0
-            # N even
-            [I(n) 1im*I(n); II(n) -1im*II(n)]/sqrt(2)
-        else
-            # N odd
-            [I(n) 0 1im*I(n); zeros(1,n) sqrt(2) zeros(1, n); II(n) 0 -1im*II(n)]/sqrt(2)
-        end
-    end
-
-    # transformation of complex centro-hermitian matrix intro a real
-    Τ(G) = begin
-        N = size(G)[1]
-        n = Int(floor(N/2))
-        G1 = G[1:n,:]
-        G2 = G[end-n+1:end,:]
-        IIn = II(n)
-        if N%2 == 0
-            # even number of sensors
-            T = [real(G1 + IIn * conj(G2)) -imag(G1 - IIn * conj(G2)); imag(G1 + IIn * conj(G2)) real(G1 - IIn * conj(G2))]
-        else
-            # uneven number of sensors
-            gT = X[n+1,:]
-            T = [real(G1 + IIn * conj(G2)) -imag(G1 - IIn * conj(G2)); sqrt(2)*real(gT) -sqrt(2)*imag(gT); imag(G1 + IIn * conj(G2)) real(G1 - IIn * conj(G2))]
-        end
-        return T
-    end
-
-    T = Τ(X)
-    U = eigvecs(T*T', sortby= λ -> -abs(λ))
-    Es = U[:,1:d]
-
-    m = size(J1)[1] # number elements in array
-    M = size(J1)[2] # number elements in subarray
-    K1 = Q(m)'*(J1+II(m)*J1*II(M))*Q(M)
-    K2 = Q(m)'*(J1-II(m)*J1*II(M))*Q(M)
-
-    C1 = K1*Es
-    C2 = K2*Es
-
-    if(TLS)
-        # TLS solution
-        E = eigvecs([C1';C2']*[C1 C2], sortby= λ -> -abs(λ))
-        E12 = E[1:d, (1:d).+d]
-        E22 = E[(1:d).+d, (1:d).+d]
-        Ψ = -E12*inv(E22)
-    else
-        # LS solution
-        Ψ = pinv(C1)*C2
-    end
-
-    Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
-
-    # calculate the directions of arrival (DoAs) from Φ
-    Μ = 2atan.(imag(-Φ))
-    k = (2π*f)/c
-    Θ = asin.(Μ/(k*Δ))
-    return Θ
 end
 
 end
