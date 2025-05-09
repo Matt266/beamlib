@@ -6,7 +6,7 @@ using LinearAlgebra
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
-        whitenoise, diffnoise, esprit, music
+        whitenoise, diffnoise, esprit, music, unitary_esprit
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -73,7 +73,8 @@ function steerphi(x::IsotropicArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::
     if(!isnothing(fs))
         Δ = round.(Δ*fs)/fs
     end
-    return exp.(-1im*Δ*2π*f)
+    v = exp.(-1im*Δ*2π*f)
+    return v
 end
 
 function steerphi(x::NestedArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
@@ -266,6 +267,74 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
 
     P = a'*a/(a'*Un*Un'*a)
     return P
+end
+
+# TODO: still WIP
+function unitary_esprit(X, J1, d; TLS = true)
+    # NxN exchange matrix
+    II(N) = begin
+        return rotl90(Matrix(I,N,N))
+    end
+    
+    # unitary matrices
+    Q(N) = begin
+        @assert N>=2
+        n = Int(floor(N/2))
+        if N%2 == 0
+            # N even
+            [I(n) 1im*I(n); II(n) -1im*II(n)]/sqrt(2)
+        else
+            # N odd
+            [I(n) 0 1im*I(n); zeros(1,n) sqrt(2) zeros(1, n); II(n) 0 -1im*II(n)]/sqrt(2)
+        end
+    end
+
+    # transformation of complex centro-hermitian matrix intro a real
+    Τ(G) = begin
+        N = size(G)[1]
+        n = Int(floor(N/2))
+        G1 = G[1:n,:]
+        G2 = G[end-n+1:end,:]
+        IIn = II(n)
+        if N%2 == 0
+            # even number of sensors
+            T = [real(G1 + IIn * conj(G2)) -imag(G1 - IIn * conj(G2)); imag(G1 + IIn * conj(G2)) real(G1 - IIn * conj(G2))]
+        else
+            # uneven number of sensors
+            gT = X[n+1,:]
+            T = [real(G1 + IIn * conj(G2)) -imag(G1 - IIn * conj(G2)); sqrt(2)*real(gT) -sqrt(2)*imag(gT); imag(G1 + IIn * conj(G2)) real(G1 - IIn * conj(G2))]
+        end
+        return T
+    end
+
+    T = Τ(X)
+    U = eigvecs(T*T', sortby= λ -> -abs(λ))
+    Es = U[:,1:d]
+
+    m = size(J1)[1] # number elements in array
+    M = size(J1)[2] # number elements in subarray
+    K1 = Q(m)'*(J1+II(m)*J1*II(M))*Q(M)
+    K2 = Q(m)'*(J1-II(m)*J1*II(M))*Q(M)
+
+    C1 = K1*Es
+    C2 = K2*Es
+
+    if(TLS)
+        # TLS solution
+        E = eigvecs([C1';C2']*[C1 C2], sortby= λ -> -abs(λ))
+        E12 = E[1:d, (1:d).+d]
+        E22 = E[(1:d).+d, (1:d).+d]
+        Ψ = -E12*inv(E22)
+    else
+        # LS solution
+        Ψ = pinv(C1)*C2
+    end
+
+    Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
+
+    # calculate the directions of arrival (DoAs) from Φ
+    Θ = 2atan.(Φ)
+    return Θ
 end
 
 end
