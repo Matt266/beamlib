@@ -270,7 +270,7 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
 end
 
 # TODO: still WIP
-function unitary_esprit(X, J1, d; TLS = true)
+function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
     # NxN exchange matrix
     II(N) = begin
         return rotl90(Matrix(I,N,N))
@@ -333,7 +333,9 @@ function unitary_esprit(X, J1, d; TLS = true)
     Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
 
     # calculate the directions of arrival (DoAs) from Φ
-    Θ = 2atan.(Φ)
+    Μ = 2atan.(imag(-Φ))
+    k = (2π*f)/c
+    Θ = asin.(Μ/(k*Δ))
     return Θ
 end
 
