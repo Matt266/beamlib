@@ -1,5 +1,5 @@
 # BeamLib.jl
-BeamLib is a Julia package for the evaluation of various beamformers. 
+BeamLib is a Julia package for the evaluation of various beamformers.
 
 Other related packages:
 
@@ -26,7 +26,7 @@ Then, in this REPL, open julias package manager by typing:
 And finally install the package via its gitlab link (same link you would use for cloning):
 
 ```
-add https://gitlab.oth-regensburg.de/scm32482/beamlib.git
+add https://github.com/Matt266/beamlib.git
 ```
 
 ## Examples
