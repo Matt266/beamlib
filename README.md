@@ -11,19 +11,19 @@ New functionality will be added to this package as needed.
 
 ## How to install
 Since the package is not yet registered, it can't be downloaded the same way as registered packages. 
-Still, the process is fairly similiar. Open a julia REPL by tpying:
+Still, the process is fairly similiar. Open a Julia REPL by tpying:
 
 ```
 julia
 ```
 
-Then, in this REPL, open julias package manager by typing:
+Then, in this REPL, open Julias package manager by typing:
 
 ```
 ]
 ```
 
-And finally install the package via its gitlab link (same link you would use for cloning):
+And finally install the package via its GitHub link (same link you would use for cloning):
 
 ```
 add https://github.com/Matt266/beamlib.git
