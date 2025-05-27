@@ -8,7 +8,7 @@ using SCS
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
-        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp
+        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -359,6 +359,24 @@ function lasso(Y, A, λ=1e-2)
     return norm.(eachrow(evaluate(X)),2).^2
 end
 
+"""
+bpdn(Y, A, η=1e-2)
+
+Basis Pursuit Denoising (BPDN) DOA estimation. Returns a vector representing the estimated, on-grid, spatial power spectrum of the signals. Estimated 
+DOAs are the grid positions for which the spectrum crosses a certain threshold, as shown in the 'BPDN.ipynb' example.    
+
+arguments:
+----------
+    Y: Data matrix of the array
+    A: Dictionary matrix of array response vectors from the angle grid 
+    η: Constraint and upper bound on the noise energy (η≥||E||_2). 
+"""
+function bpdn(Y, A, η=1e-2)
+    X = ComplexVariable(size(A)[2], size(Y)[2])
+    p = minimize(sum([norm(X[i, :], 2) for i in axes(X, 1)]), norm(A*X-Y, 2) <= η)
+    solve!(p, SCS.Optimizer)
+    return norm.(eachrow(evaluate(X)),2).^2
+end
 
 """
 omp(Y, A, d)
