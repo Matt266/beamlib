@@ -8,7 +8,7 @@ using SCS
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
-        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso
+        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -343,7 +343,7 @@ end
 """
 lasso(Y, A, λ=1e-2)
 
-LASSO DOA estimation. Returns a vector respresenting the estimated, on-grid, spatial power spectrum of the signals. Estimated 
+LASSO DOA estimation. Returns a vector representing the estimated, on-grid, spatial power spectrum of the signals. Estimated 
 DOAs are the grid positions for which the spectrum crosses a certain threshold, as shown in the 'LASSO.ipynb' example.    
 
 arguments:
@@ -357,6 +357,39 @@ function lasso(Y, A, λ=1e-2)
     p = minimize(λ*sum([norm(X[i, :], 2) for i in axes(X, 1)]) + 0.5*sumsquares(A*X-Y))
     solve!(p, SCS.Optimizer)
     return norm.(eachrow(evaluate(X)),2).^2
+end
+
+
+"""
+omp(Y, A, d)
+
+Orthogonal Matching Pursuit (OMP) DOA estimation. Returns a vector representing the estimated, on-grid, sparse, spatial power spectrum of the signals. Estimated 
+DOAs are the angles corresponding to indices of the non-zero values of the output spectrum.
+
+arguments:
+----------
+    Y: Data matrix of the array
+    A: Dictionary matrix of array response vectors from the angle grid 
+    d: number of sources
+"""
+function omp(Y, A, d)
+    r = copy(Y)
+    Λ = Int[]
+
+    for _ in 1:d
+        corr = A'*r
+        idx = argmax(norm.(eachrow(corr)))
+        push!(Λ, idx)
+
+        Ψ = A[:, Λ]
+        X = Ψ \ Y
+        r = Y - Ψ*X
+    end
+    
+    Ψ = A[:, Λ]
+    s = zeros(size(A,2))
+    s[Λ] .= norm.(eachrow(Ψ \ Y)).^2
+    return s
 end
 
 end
