@@ -2,11 +2,13 @@ module BeamLib
 import Base.convert
 import Base.length
 using LinearAlgebra
+using Convex
+using SCS
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
-        whitenoise, diffnoise, esprit, music, unitary_esprit
+        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -335,6 +337,26 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
 
     P = a'*a/(a'*Un*Un'*a)
     return P
+end
+
+
+"""
+lasso(Y, A, λ=1e-2)
+
+LASSO DOA estimation. Returns a vector respresenting the estimated, on-grid, spatial power spectrum of the signals. Estimated 
+DOAs are the grid positions for which the spectrum crosses a certain threshold, as shown in the 'LASSO.ipynb' example.    
+
+arguments:
+----------
+    Y: Data matrix of the array
+    A: Dictionary matrix of array response vectors from the angle grid 
+    λ: Regularization parameter for the LASSO problem
+"""
+function lasso(Y, A, λ=1e-2)
+    X = ComplexVariable(size(A)[2], size(Y)[2])
+    p = minimize(λ*sum([norm(X[i, :], 2) for i in axes(X, 1)]) + 0.5*sumsquares(A*X-Y))
+    solve!(p, SCS.Optimizer)
+    return norm.(eachrow(evaluate(X)),2).^2
 end
 
 end
