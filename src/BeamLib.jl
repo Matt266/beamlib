@@ -2,13 +2,15 @@ module BeamLib
 import Base.convert
 import Base.length
 using LinearAlgebra
+using StatsBase
 using Convex
 using SCS
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
-        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn
+        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
+        aic, mdl
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -339,6 +341,60 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
     return P
 end
 
+"""
+aic(Rxx, N)
+
+Estimates number of sources using the Akaike information criterion (AIC).
+
+arguments:
+----------
+    Rxx: covariance matrix of the array which is used for estimation
+    N: sample size
+"""
+function aic(Rxx, N)
+    p = size(Rxx, 1)
+    λ = eigvals(Rxx, sortby= λ -> -abs(λ))
+
+    aic = zeros(p)
+
+    for k in 0:p-1
+        λ_n = λ[k+1:end]
+        L = log(StatsBase.geomean(λ_n)/mean(λ_n))
+        aic[k+1] = -L^((p-k)N) + k*(2p-k)
+    end
+
+    # filter out invalid (Inf, -Inf, NaN) results
+    orders = (0:p-1)[map(!, (isnan.(aic) .|| isinf.(aic)))]
+    aic = aic[map(!, (isnan.(aic) .|| isinf.(aic)))]
+    return orders[argmin(aic)]
+end
+
+"""
+mdl(Rxx, N)
+
+Estimates number of sources using the Minimum Description Length (MDL) model selection criteria.
+
+arguments:
+----------
+    Rxx: covariance matrix of the array which is used for estimation
+    N: sample size
+"""
+function mdl(Rxx, N)
+    p = size(Rxx, 1)
+    λ = eigvals(Rxx, sortby= λ -> -abs(λ))
+    mdl = zeros(p)
+
+    for k in 0:p-1
+        λ_n = λ[k+1:end]
+        L = log(StatsBase.geomean(λ_n)/mean(λ_n))
+        mdl[k+1] = -L^((p-k)N) + 0.5k*(2p-k)log(N)
+    end
+
+    # filter out invalid (Inf, -Inf, NaN) results
+    orders = (0:p-1)[map(!, (isnan.(mdl) .|| isinf.(mdl)))]
+    mdl = mdl[map(!, (isnan.(mdl) .|| isinf.(mdl)))]
+    return orders[argmin(mdl)]
+end
 
 """
 lasso(Y, A, λ=1e-2)
