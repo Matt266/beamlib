@@ -518,7 +518,18 @@ function omp(Y, A, d)
     return s
 end
 
-# TODO: unconditional_signals() to generate signals corresponding to the unconditinal signal model (random signals)
+
+"""
+unconditional_signals(Rss, N; filter = PolynomialRatio([1.0], [1.0, -0.7]))
+
+Generates signals corresponding to the unconditional signal model (stochastic signals) but with given spatial correlation
+
+arguments:
+----------
+    Rss: Covariance matrix of the signals
+    N: number of snapshots to generate
+    filter: filter used to color the noise temporally
+"""
 function unconditional_signals(Rss, N; filter = PolynomialRatio([1.0], [1.0, -0.7]))
     # number signals
     d = size(Rss, 1)
