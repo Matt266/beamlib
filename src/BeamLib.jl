@@ -8,12 +8,13 @@ using SCS
 using Optimization
 using OptimizationOptimJL
 using Optim
+using DSP
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
-        aic, mdl, wsf
+        aic, mdl, wsf, unconditional_signals
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -514,6 +515,31 @@ function omp(Y, A, d)
     Ψ = A[:, Λ]
     s = zeros(size(A,2))
     s[Λ] .= norm.(eachrow(Ψ \ Y)).^2
+    return s
+end
+
+# TODO: unconditional_signals() to generate signals corresponding to the unconditinal signal model (random signals)
+function unconditional_signals(Rss, N; filter = PolynomialRatio([1.0], [1.0, -0.7]))
+    # number signals
+    d = size(Rss, 1)
+
+    # generate random signals
+    w = (randn(d, N) + 1im*randn(d, N))/sqrt(2)
+
+    # share same filter for all signals if only one is given
+    if !(filter isa AbstractArray)
+        filter = fill(filter, d)
+    end
+
+    # filter signals and normalize output power
+    w_filtered = zeros(ComplexF64, d, N)
+    for i in 1:d
+        w_temp = filt(filter[i], w[i,:])
+        w_filtered[i, :] = w_temp/sqrt(mean(abs2.(w_temp)))
+    end
+
+    # correlate sources 
+    s = cholesky(Rss).L * w_filtered
     return s
 end
 
