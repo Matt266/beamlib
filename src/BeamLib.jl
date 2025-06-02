@@ -5,12 +5,15 @@ using LinearAlgebra
 using StatsBase
 using Convex
 using SCS
+using Optimization
+using OptimizationOptimJL
+using Optim
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
         mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
-        aic, mdl
+        aic, mdl, wsf
 
 c_0 = 299792458.0
 @enum WaveDirection begin
@@ -340,6 +343,54 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
     P = a'*a/(a'*Un*Un'*a)
     return P
 end
+
+"""
+wsf(pa::PhasedArray, Rxx, d, ϕ0, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
+
+DoA estimation using weighted subspace fitting (WSF) .
+
+arguments:
+----------
+    pa: PhasedArray to calculate the MUSIC spectrum for
+    Rxx: covariance matrix of the array which is used for estimation
+    d: number of sources
+    ϕ0: vector of initial DoAs as starting point for WSF
+    f: center/operating frequency
+    fs: sampling frequency of the steering vector to quantize phase shifts
+    c: propagation speed of the wave
+    optimizer: used optimizer to solve the WSF problem
+    maxiters: maximum optimization iterations
+"""
+function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
+    p = pa, Rxx, d, f, fs, c
+    wsf_cost = function(ϕ, p)
+        pa, Rxx, d, f, fs, c = p
+        Λ, U = eigen(Rxx, sortby= λ -> -abs(λ))
+
+        Λs = diagm(Λ[1:d])
+        Λn = diagm(Λ[d+1:length(Λ)])
+
+        Us = U[:, 1:d]
+        Un = U[:, d+1:size(U, 2)]
+
+        # estimate noise variance as mean of noise eigenvalues
+        σ² = mean(Λn)
+        Λest = Λs - σ²*I
+        W = Λest^2*inv(Λs)
+
+        A = hcat(steerphi.(Ref(pa), f, ϕ; fs=fs, c=c, direction=Incoming)...)
+        PA = A*inv(A'*A)*A'
+
+        cost =  tr((I-PA)*Us*W*Us')
+        return real(cost)
+    end
+    
+    f = OptimizationFunction(wsf_cost, Optimization.AutoForwardDiff())
+    p = OptimizationProblem(f, ϕ0, p)
+    s = solve(p, optimizer; maxiters=maxiters)
+    return s.u
+end
+
 
 """
 aic(Rxx, N)
