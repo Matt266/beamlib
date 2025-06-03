@@ -8,7 +8,6 @@ using SCS
 using Optimization
 using OptimizationOptimJL
 using Optim
-using DSP
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
@@ -520,7 +519,7 @@ end
 
 
 """
-unconditional_signals(Rss, N; filter = PolynomialRatio([1.0], [1.0, -0.7]))
+unconditional_signals(Rss, N; norm=true)
 
 Generates signals corresponding to the unconditional signal model (stochastic signals) but with given spatial correlation
 
@@ -528,29 +527,22 @@ arguments:
 ----------
     Rss: Covariance matrix of the signals
     N: number of snapshots to generate
-    filter: filter used to color the noise temporally
+    norm: normalize so source power adds up to unit power
 """
-function unconditional_signals(Rss, N; filter = PolynomialRatio([1.0], [1.0, -0.7]))
+function unconditional_signals(Rss, N; norm=true)
     # number signals
     d = size(Rss, 1)
 
     # generate random signals
     w = (randn(d, N) + 1im*randn(d, N))/sqrt(2)
 
-    # share same filter for all signals if only one is given
-    if !(filter isa AbstractArray)
-        filter = fill(filter, d)
-    end
-
-    # filter signals and normalize output power
-    w_filtered = zeros(ComplexF64, d, N)
-    for i in 1:d
-        w_temp = filt(filter[i], w[i,:])
-        w_filtered[i, :] = w_temp/sqrt(mean(abs2.(w_temp)))
+    # normalize so source power adds up to unit power
+    if norm
+        Rss = Rss/tr(Rss)
     end
 
     # correlate sources 
-    s = cholesky(Rss).L * w_filtered
+    s = cholesky(Rss).L * w
     return s
 end
 
