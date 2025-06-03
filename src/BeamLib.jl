@@ -462,7 +462,7 @@ arguments:
 function lasso(Y, A, λ=1e-2)
     X = ComplexVariable(size(A)[2], size(Y)[2])
     p = minimize(λ*sum([norm(X[i, :], 2) for i in axes(X, 1)]) + 0.5*sumsquares(A*X-Y))
-    solve!(p, SCS.Optimizer)
+    Convex.solve!(p, SCS.Optimizer)
     return norm.(eachrow(evaluate(X)),2).^2
 end
 
@@ -481,7 +481,7 @@ arguments:
 function bpdn(Y, A, η=1e-2)
     X = ComplexVariable(size(A)[2], size(Y)[2])
     p = minimize(sum([norm(X[i, :], 2) for i in axes(X, 1)]), norm(A*X-Y, 2) <= η)
-    solve!(p, SCS.Optimizer)
+    Convex.solve!(p, SCS.Optimizer)
     return norm.(eachrow(evaluate(X)),2).^2
 end
 
