@@ -209,7 +209,7 @@ Calculates the TLS esprit estimator for the direction of arrival.
 arguments:
 ----------
     Rzz: covariance matrix of total array (both subarrays vertically concatenated),
-    Δ: distance between both subarrays
+    Δ: displacement vector between both subarrays
     d: number of sources
     f: center/operating frequency
     c: propagation speed of the wave
@@ -245,7 +245,10 @@ function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
 
     # calculate the directions of arrival (DoAs) from Φ
     k = (2π*f)/c
-    Θ = asin.(angle.(Φ)/(k*Δ))
+    Θ = mod.(atan(Δ[2], Δ[1]) .+ acos.(angle.(Φ)/(k*norm(Δ))),π)
+
+    # for displacement along y-axis:
+    # asin.(angle.(Φ)/(k*norm(Δ)))
     return Θ
 end
 
@@ -259,7 +262,7 @@ arguments:
 ----------
     X: data matrix of the array (NO CONCATENATION of subarrays)
     J1: selection matrix for the first subarray
-    Δ: distance between both subarrays
+    Δ: displacement vector between both subarrays
     d: number of sources
     f: center/operating frequency
     c: propagation speed of the wave
@@ -281,7 +284,7 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
             [I(n) 1im*I(n); II(n) -1im*II(n)]/sqrt(2)
         else
             # N odd
-            [I(n) 0 1im*I(n); zeros(1,n) sqrt(2) zeros(1, n); II(n) 0 -1im*II(n)]/sqrt(2)
+            [I(n) zeros(n,1) 1im*I(n); zeros(1,n) sqrt(2) zeros(1, n); II(n) zeros(n,1) -1im*II(n)]/sqrt(2)
         end
     end
 
@@ -313,7 +316,11 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
     # calculate the directions of arrival (DoAs) from Φ
     Μ = 2atan.(real(Φ))
     k = (2π*f)/c
-    Θ = asin.(Μ/(k*Δ))
+
+    # for displacement along y-axis:
+    # Θ = asin.(Μ/(k*Δ))
+    Θ = mod.(atan(Δ[2], Δ[1]) .+ acos.(Μ/(k*norm(Δ))),π)
+
     return Θ
 end
 
