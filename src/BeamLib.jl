@@ -173,7 +173,7 @@ function bartlett(pa::PhasedArray, Rxx, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_
 
     a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
     P = a'*W*Rxx*W'*a
-    return P
+    return real(P)
 end
 
 
@@ -198,7 +198,7 @@ arguments:
 function capon(pa::PhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
     a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
     P = 1/(a'*inv(Rxx)'*a)
-    return P
+    return real(P)
 end
 
 """
@@ -348,7 +348,7 @@ function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
     a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
 
     P = a'*a/(a'*Un*Un'*a)
-    return P
+    return real(P)
 end
 
 """
