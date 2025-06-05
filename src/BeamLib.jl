@@ -456,16 +456,11 @@ function mdl(Rxx, N)
     return orders[argmin(mdl)]
 end
 
-# for lasso
-
-struct LeastSquares
-    A::Matrix{ComplexF64}
-    Y::Matrix{ComplexF64}
-end
-
-function ProximalAlgorithms.value_and_gradient(f::LeastSquares, X)
-    val =  0.5*norm(f.A*X-f.Y).^2
-    grad = f.A'*(f.A*X-f.Y)
+# for solving lasso with LeastSquares from ProximalOperators.jl
+function ProximalAlgorithms.value_and_gradient(f::ProximalOperators.LeastSquares, X)
+    val = f(X)
+    grad = similar(X)
+    gradient!(grad, f, X)
     return val, grad
 end
 
