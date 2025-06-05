@@ -8,6 +8,8 @@ using SCS
 using Optimization
 using OptimizationOptimJL
 using Optim
+using ProximalAlgorithms
+using ProximalOperators
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
         dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
@@ -454,8 +456,21 @@ function mdl(Rxx, N)
     return orders[argmin(mdl)]
 end
 
+# for lasso
+
+struct LeastSquares
+    A::Matrix{ComplexF64}
+    Y::Matrix{ComplexF64}
+end
+
+function ProximalAlgorithms.value_and_gradient(f::LeastSquares, X)
+    val =  0.5*norm(f.A*X-f.Y).^2
+    grad = f.A'*(f.A*X-f.Y)
+    return val, grad
+end
+
 """
-lasso(Y, A, λ=1e-2)
+lasso(Y, A, λ=1e-2; max_iter=300, tol=1e-6)
 
 LASSO DOA estimation. Returns a vector representing the estimated, on-grid, spatial power spectrum of the signals. Estimated 
 DOAs are the grid positions for which the spectrum crosses a certain threshold, as shown in the 'LASSO.ipynb' example.    
@@ -465,12 +480,16 @@ arguments:
     Y: Data matrix of the array
     A: Dictionary matrix of array response vectors from the angle grid 
     λ: Regularization parameter for the LASSO problem
+    maxit: maximum iterations for optimization
+    tol: tolerance for optimization 
 """
-function lasso(Y, A, λ=1e-2)
-    X = ComplexVariable(size(A)[2], size(Y)[2])
-    p = minimize(λ*sum([norm(X[i, :], 2) for i in axes(X, 1)]) + 0.5*sumsquares(A*X-Y))
-    Convex.solve!(p, SCS.Optimizer)
-    return norm.(eachrow(evaluate(X)),2).^2
+function lasso(Y, A, λ=1e-2; maxit=100, tol=1e-6)
+    f = LeastSquares(A, Y)
+    g = NormL21(λ, 2)
+    X0 = zeros(ComplexF64, size(A,2), size(Y,2))
+    ffb = ProximalAlgorithms.FastForwardBackward(maxit=maxit, tol=tol)
+    solution, _ = ffb(x0=X0, f=f, g=g)
+    return norm.(eachrow(solution), 2).^2
 end
 
 """
