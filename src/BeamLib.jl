@@ -207,6 +207,8 @@ end
 esprit(Rzz, Δ, d, f, c=c_0)
 
 Calculates the TLS esprit estimator for the direction of arrival.
+Returns a vector of tuples with each tuple holding the two ambigues 
+DOAs corresponding to a source. 
 
 arguments:
 ----------
@@ -247,11 +249,20 @@ function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
 
     # calculate the directions of arrival (DoAs) from Φ
     k = (2π*f)/c
-    Θ = mod.(atan(Δ[2], Δ[1]) .+ acos.(angle.(Φ)/(k*norm(Δ))),π)
+
+    # orientation of displacement vector
+    ϕ0 = atan(Δ[2], Δ[1])  
+
+    Θ1 = ϕ0 .- acos.(angle.(Φ) ./ (k * norm(Δ)))
+    Θ2 = ϕ0 .+ acos.(angle.(Φ) ./ (k * norm(Δ)))
+
+    # Wrap to [-π, π)
+    Θ1 = mod.(Θ1 .+ π, 2π) .- π
+    Θ2 = mod.(Θ2 .+ π, 2π) .- π
 
     # for displacement along y-axis:
     # asin.(angle.(Φ)/(k*norm(Δ)))
-    return Θ
+return collect(zip(Θ1, Θ2))
 end
 
 """
@@ -319,17 +330,28 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
     Μ = 2atan.(real(Φ))
     k = (2π*f)/c
 
+    # orientation of displacement vector
+    ϕ0 = atan(Δ[2], Δ[1])  
+    
+    Θ1 = ϕ0 .- acos.(Μ ./ (k * norm(Δ)))
+    Θ2 = ϕ0 .+ acos.(Μ ./ (k * norm(Δ)))
+
+    # Wrap to [-π, π)
+    Θ1 = mod.(Θ1 .+ π, 2π) .- π
+    Θ2 = mod.(Θ2 .+ π, 2π) .- π
+
     # for displacement along y-axis:
     # Θ = asin.(Μ/(k*Δ))
-    Θ = mod.(atan(Δ[2], Δ[1]) .+ acos.(Μ/(k*norm(Δ))),π)
 
-    return Θ
+    return collect(zip(Θ1, Θ2))
 end
 
 """
 music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
 
 Calculates the MUSIC spectrum for direction of arrival estimation.
+Returns a vector of tuples with each tuple holding the two ambigues 
+DOAs corresponding to a source. 
 
 arguments:
 ----------
