@@ -204,7 +204,7 @@ function capon(pa::PhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
 end
 
 """
-esprit(Rzz, Δ, d, f, c=c_0)
+esprit(Rzz, Δ, d, f; c=c_0, TLS = true, side = :left)
 
 Calculates the TLS esprit estimator for the direction of arrival.
 Returns a vector of tuples with each tuple holding the two ambigues 
@@ -219,8 +219,10 @@ arguments:
     c: propagation speed of the wave
     TLS: calculates total least squares solution if 'true' (default),
         least squares if 'false'
+    side: choose angles on the left (':left'), right (':right'), or both (':both') sides
+        of the displacement vector to decide between the two ambigues angles per source.
 """
-function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
+function esprit(Rzz, Δ, d, f; c=c_0, TLS = true, side = :left)
     # number of sensors in the array (p)
     # and the subarrays (ps)
     p = size(Rzz)[1]
@@ -253,20 +255,31 @@ function esprit(Rzz, Δ, d, f; c=c_0, TLS = true)
     # orientation of displacement vector
     ϕ0 = atan(Δ[2], Δ[1])  
 
-    Θ1 = ϕ0 .- acos.(angle.(Φ) ./ (k * norm(Δ)))
-    Θ2 = ϕ0 .+ acos.(angle.(Φ) ./ (k * norm(Δ)))
+    # angle estimates to the left of Δ
+    Θ1 = ϕ0 .+ acos.(angle.(Φ) ./ (k * norm(Δ)))
+    Θ1 =  mod.(Θ1 .+ π, 2π) .- π
 
-    # Wrap to [-π, π)
-    Θ1 = mod.(Θ1 .+ π, 2π) .- π
+    # angle estimates to the right of Δ
+    Θ2 = ϕ0 .- acos.(angle.(Φ) ./ (k * norm(Δ)))
     Θ2 = mod.(Θ2 .+ π, 2π) .- π
 
+    # select ambigues angles left or right
+    # respective to displacement vector Δ
+    if side == :left
+        return Θ1
+    elseif side == :right
+        return Θ2
+    elseif side == :both
+        return Θ1, Θ2
+    else
+       error("Invalid symbol for side: ':$(side)'. Valid options are: ':left', ':right', ':both'")
+    end
     # for displacement along y-axis:
     # asin.(angle.(Φ)/(k*norm(Δ)))
-return collect(zip(Θ1, Θ2))
 end
 
 """
-unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
+unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
 
 Calculates the DoAs using the unitary esprit.
 Requires a centrosymmetric array geometry.
@@ -281,8 +294,10 @@ arguments:
     c: propagation speed of the wave
     TLS: calculates total least squares solution if 'true' (default),
         least squares if 'false'
+    side: choose angles on the left (':left'), right (':right'), or both (':both') sides
+        of the displacement vector to decide between the two ambigues angles per source.
 """
-function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
+function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
     # NxN exchange matrix
     II(N) = begin
         return rotl90(Matrix(I,N,N))
@@ -332,18 +347,29 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true)
 
     # orientation of displacement vector
     ϕ0 = atan(Δ[2], Δ[1])  
-    
-    Θ1 = ϕ0 .- acos.(Μ ./ (k * norm(Δ)))
-    Θ2 = ϕ0 .+ acos.(Μ ./ (k * norm(Δ)))
 
-    # Wrap to [-π, π)
-    Θ1 = mod.(Θ1 .+ π, 2π) .- π
+    # angle estimates to the left of Δ
+    Θ1 = ϕ0 .+ acos.(Μ ./ (k * norm(Δ)))
+    Θ1 =  mod.(Θ1 .+ π, 2π) .- π
+
+    # angle estimates to the right of Δ
+    Θ2 = ϕ0 .- acos.(Μ ./ (k * norm(Δ)))
     Θ2 = mod.(Θ2 .+ π, 2π) .- π
+
+    # select ambigues angles left or right
+    # respective to displacement vector Δ
+    if side == :left
+        return Θ1
+    elseif side == :right
+        return Θ2
+    elseif side == :both
+        return Θ1, Θ2
+    else
+       error("Invalid symbol for side: ':$(side)'. Valid options are: ':left', ':right', ':both'")
+    end
 
     # for displacement along y-axis:
     # Θ = asin.(Μ/(k*Δ))
-
-    return collect(zip(Θ1, Θ2))
 end
 
 """
