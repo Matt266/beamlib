@@ -117,13 +117,20 @@ function steer(x::IsotropicArray, f, azel; c=c_0, dir=:rx)
     elseif dir == :rx
         φ = -k .* (x.r' * ζ)
     else
-        error("dir must be ':rx' or ':tx'; got: '$(dir)'")
+        throw(ArgumentError("dir must be ':rx' or ':tx'; got: '$(dir)'"))
     end 
 
     return exp.(1im .* φ) 
 end
 
 function k2azel(k; f=nothing, c=c_0, dir=:rx)
+
+    if dir == :rx
+        k = -k
+    elseif  dir != :tx
+        throw(ArgumentError("dir must be ':rx' or ':tx'; got: '$(dir)'"))
+    end
+
     M, N = size(k)
 
     if M == 1
@@ -137,6 +144,11 @@ function k2azel(k; f=nothing, c=c_0, dir=:rx)
     else 
         k = k ./ (2π*f/c)
     end
+
+    az = atan.(k[2,:], k[1, :])
+    el = atan.(k[3, :], sqrt.(k[1,:].^2 + k[2,:].^2))
+
+    return [az; el]
 end
 
 function steerphi(x::NestedArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
