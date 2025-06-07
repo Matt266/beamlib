@@ -86,6 +86,59 @@ function steerphi(x::IsotropicArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::
     return v
 end
 
+"""
+steer(x::IsotropicArray, f, azel; c=c_0, dir=:rx)
+
+Calculates the steering vector/matrix for given azimuth and elevation angles. 
+
+arguments:
+----------
+    x::IsotropicArray: Array to calculate the steering vector/matrix for
+    f: frequency
+    azel: 1xD vector or 2XD matrix holding azimuth and elevation angles to steer for [azimuth; elevation].
+          For 1xD elevation is assumed as zero. 
+    c: propagation speed of the wave (default: c_0)
+    dir: direction for beamforming in tx or rx case. (values: ':tx' or ':rx') (default: ':rx')
+"""
+function steer(x::IsotropicArray, f, azel; c=c_0, dir=:rx)
+    k = 2π * f / c
+
+    M, N = size(azel)
+
+    az = vec(azel[1, :])
+    el = M == 1 ? zeros(N) : vec(azel[2, :])
+    
+    ζ = [cos.(el) .* cos.(az);
+         cos.(el) .* sin.(az);
+         sin.(el)]
+
+    if dir == :tx
+        φ = k .* (x.r' * ζ)
+    elseif dir == :rx
+        φ = -k .* (x.r' * ζ)
+    else
+        error("dir must be ':rx' or ':tx'; got: '$(dir)'")
+    end 
+
+    return exp.(1im .* φ) 
+end
+
+function k2azel(k; f=nothing, c=c_0, dir=:rx)
+    M, N = size(k)
+
+    if M == 1
+        k = [k, zeros(2, N)]
+    elseif M==2
+        k = [k, zeros(1, N)]
+    end 
+
+    if isnothing(f)
+        k = k  ./ sqrt.(sum(abs2, k; dims=1))
+    else 
+        k = k ./ (2π*f/c)
+    end
+end
+
 function steerphi(x::NestedArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
     v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
     return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
