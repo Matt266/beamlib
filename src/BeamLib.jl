@@ -11,17 +11,12 @@ using Optim
 using ProximalAlgorithms
 using ProximalOperators
 
-export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steerphi, steerk, 
-        dsb_weights, dsb_weights_k, bartlett, mvdr_weights, mvdr_weights_k,
-        mpdr_weights, mpdr_weights_k, capon_weights, capon_weights_k, capon,
+export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
+        dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
         aic, mdl, wsf, unconditional_signals
 
 c_0 = 299792458.0
-@enum WaveDirection begin
-    Incoming = -1
-    Outgoing = 1
-end
 
 # generic phased arrays
 abstract type PhasedArray end
@@ -67,134 +62,109 @@ function Base.length(x::NestedArray)
     return sum(length.(x.subarrays))
 end
 
-function steerphi(x::IsotropicArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    if direction == Incoming
-        ζ = [-cos(ϕ)*cos(θ), -sin(ϕ)*cos(θ), -sin(θ)]
-    else
-        ζ = [cos(ϕ)*cos(θ), sin(ϕ)*cos(θ), sin(θ)]
-    end
-
-    # Matlab orientation
-    # ζ = [-cos(ϕ)*cos(θ), -sin(ϕ)*cos(θ), -sin(θ)]
-
-    α = ζ/c # slowness vector
-    Δ = Vector(vec(α'*x.r))
-    if(!isnothing(fs))
-        Δ = round.(Δ*fs)/fs
-    end
-    v = exp.(-1im*Δ*2π*f)
-    return v
-end
-
 """
-steer(x::IsotropicArray, f, azel; c=c_0, dir=:rx)
+steer(x::IsotropicArray, f, angles; c=c_0, dir=:rx, coords=:azel)
 
 Calculates the steering vector/matrix for given azimuth and elevation angles. 
 
 arguments:
 ----------
-    x::IsotropicArray: Array to calculate the steering vector/matrix for
-    f: frequency
-    azel: 1xD vector or 2XD matrix holding azimuth and elevation angles to steer for [azimuth; elevation].
-          For 1xD elevation is assumed as zero. 
-    c: propagation speed of the wave (default: c_0)
-    dir: direction for beamforming in tx or rx case. (values: ':tx' or ':rx') (default: ':rx')
+    f: Frequency of the signal in Hz.
+    angles: Matrix with angles in the format specified in 'coords'
+    c: Propagation speed of the wave (default: c_0).
+    dir: Direction for beamforming:
+         - ':rx': Receiving (steer for incoming wave)
+         - ':tx': Transmitting (steer for outgoing wave)
+         (default: ':rx').
+    coords: Coordinate system of 'angles':
+         - ':azel' (default): interpret angles as azimuth/elevation pairs [az; el]
+         - ':k': interpret as wavevector [kx; ky; kz]
+returns:
+--------
+    Complex steering matrix of size MxD, where M is the number of array elements and D is the number of angle pairs.
 """
-function steer(x::IsotropicArray, f, azel; c=c_0, dir=:rx)
+function steer(x::IsotropicArray, f, angles; c=c_0, dir=:rx, coords=:azel)
     k = 2π * f / c
 
-    M, N = size(azel)
+    if coords == :azel
+        # angels = [azimtuh, elevation] 2xD matrix
 
-    az = vec(azel[1, :])
-    el = M == 1 ? zeros(N) : vec(azel[2, :])
-    
-    ζ = [cos.(el) .* cos.(az);
-         cos.(el) .* sin.(az);
-         sin.(el)]
+        if ndims(angles) == 0
+            angles = [angles; 0]
+        end
 
-    if dir == :tx
+        # only when single az/el pair - transpose changes ndims
+        # ndims(transpose([3, 4])) is 2
+        # ndims([3, 4]) is 1
+        if ndims(angles) == 1
+            angles = reshape(angles, 2, 1)
+        end
+
+        M, D = size(angles)
+
+        az = transpose(angles[1, :])
+        el = M == 1 ? zeros(1, D) : transpose(angles[2, :])
+
+        ζ = [cos.(el) .* cos.(az);
+             cos.(el) .* sin.(az);
+             sin.(el)]
+
+        if dir == :tx
+            φ = (k .* (x.r' * ζ))
+        elseif dir == :rx
+            φ = -(k .* (x.r' * ζ))
+        else
+            throw(ArgumentError("dir must be ':rx' or ':tx'; got: '$(dir)'"))
+        end 
+
+        return exp.(-1im .* φ)
+
+    elseif coords == :k
+        # angels = [kx; ky; kz] 3xD matrix
+
+        if ndims(angles) == 0
+            angles = [angles; 0; 0]
+        end
+
+        # see quvialent part for mode == :azel
+        if ndims(angles) == 1
+            angles = reshape(angles, 3, 1)
+        end
+
+        M, D = size(angles)
+
+        if M == 1
+            angles = [angles; zeros(2, D)]
+        elseif M==2
+            angles = [angles; zeros(1, D)]
+        end 
+           
+        ζ = angles ./ (2π*f/c)
         φ = k .* (x.r' * ζ)
-    elseif dir == :rx
-        φ = -k .* (x.r' * ζ)
+        return exp.(-1im .* φ) 
     else
-        throw(ArgumentError("dir must be ':rx' or ':tx'; got: '$(dir)'"))
-    end 
-
-    return exp.(1im .* φ) 
-end
-
-function k2azel(k; f=nothing, c=c_0, dir=:rx)
-
-    if dir == :rx
-        k = -k
-    elseif  dir != :tx
-        throw(ArgumentError("dir must be ':rx' or ':tx'; got: '$(dir)'"))
+        throw(ArgumentError("coords must be ':azel' or ':k'; got: '$(mode)'"))
     end
-
-    M, N = size(k)
-
-    if M == 1
-        k = [k, zeros(2, N)]
-    elseif M==2
-        k = [k, zeros(1, N)]
-    end 
-
-    if isnothing(f)
-        k = k  ./ sqrt.(sum(abs2, k; dims=1))
-    else 
-        k = k ./ (2π*f/c)
-    end
-
-    az = atan.(k[2,:], k[1, :])
-    el = atan.(k[3, :], sqrt.(k[1,:].^2 + k[2,:].^2))
-
-    return [az; el]
 end
 
-function steerphi(x::NestedArray, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    v = steerphi(x.elements, f, ϕ, θ, fs=fs, c=c, direction=direction)
-    return reduce(vcat, Tuple(v[i]*steerphi(s, f, ϕ, θ, fs=fs, c=c, direction=direction) for (i,s) in enumerate(x.subarrays)))
+function steer(x::NestedArray, f, angles; c=c_0, dir=:rx, coords=:azel)
+    v_super = steer(x.elements, f, angles; c=c, dir=dir, coords=coords)
+    v_sub = steer.(x.subarrays, Ref(f), Ref(angles); c=c, dir=dir, coords=coords)
+    return reduce(vcat, map((sup_row, sub_mat) -> sub_mat .* reshape(sup_row, 1, :), eachrow(v_super), v_sub))
 end
 
-function steerk(x::IsotropicArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
-    k = 2π*f/c # wavenumber
-    ζ = [kx/k, ky/k, kz/k] # propagation direction
-    α = ζ/c # slowness vector
-    Δ =  Vector(vec(α'*x.r))
-    if(!isnothing(fs))
-        Δ = round.(Δ*fs)/fs
-    end
-    return exp.(-1im*Δ*2π*f)
+function dsb_weights(x::PhasedArray, f, angles; c=c_0, dir=:rx, coords=:azel)
+    return steer(x, f, angles; c=c, dir=dir, coords=coords)/Base.length(x)
 end
 
-function steerk(x::NestedArray, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
-    v = steerk(x.elements, f, kx, ky, kz, fs=fs, c=c)
-    return reduce(vcat, Tuple(v[i]*steerk(s, f, kx, ky, kz; fs=fs, c=c) for (i,s) in enumerate(x.subarrays)))
+function mvdr_weights(x::PhasedArray, Rnn, f, angles; c=c_0, dir=:rx, coords=:azel)
+    v = steer(x, f, angles; c=c, dir=dir, coords=coords)
+    return (inv(Rnn)*v)/(v'*inv(Rnn)*v)
 end
 
-function dsb_weights(x::PhasedArray, f, ϕ, θ=0; fs=nothing,  c=c_0, direction::WaveDirection=Incoming)
-    return steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)/Base.length(x)
-end
-
-function dsb_weights_k(x::PhasedArray, f, kx, ky=0, kz=0; fs=nothing,  c=c_0)
-    return steerk(x, f, kx, ky, kz; fs=fs, c=c)/Base.length(x)
-end
-
-function mvdr_weights(x::PhasedArray, Snn, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming)
-    v = steerphi(x, f, ϕ, θ; fs=fs, c=c, direction=direction)
-    return (inv(Snn)*v)/(v'*inv(Snn)*v)
-end
-
-function mvdr_weights_k(x::PhasedArray, Snn, f, kx, ky=0, kz=0; fs=nothing, c=c_0)
-    v = steerk(x, f, kx, ky, kz; fs=fs, c=c)
-    return (inv(Snn)*v)/(v'*inv(Snn)*v)
-end
-
-mpdr_weights(x::PhasedArray, Sxx, f, ϕ, θ=0; fs=nothing, c=c_0, direction::WaveDirection=Incoming) = mvdr_weights(x, Sxx, f, ϕ, θ; fs=fs, c=c, direction=direction)
-mpdr_weights_k(x::PhasedArray, Sxx, f, kx, ky=0, kz=0; fs=nothing, c=c_0) = mvdr_weights_k(x, Sxx, f, kx, ky, kz; fs=fs, c=c)
+mpdr_weights(x::PhasedArray, Rxx, f, angles; c=c_0, dir=:rx, coords=:azel) = mvdr_weights(x, Rxx, f, angles; c=c, dir=dir, coords=coords)
 
 const capon_weights = mpdr_weights
-const capon_weights_k = mpdr_weights_k
 
 function whitenoise(x::IsotropicArray, σ²)
     return σ²*I(Base.length(x))
@@ -211,7 +181,7 @@ function diffnoise(x::IsotropicArray, σ², f, c=c_0)
 end
 
 """
-bartlett(pa::PhasedArray, Rxx, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
+bartlett(pa::PhasedArray, Rxx, angles; w=nothing, c=c_0)
 
 Calculates the bartlett spectrum for direction of arrival estimation.
 This is identically to steering a bartlett (delay-and-sum) beamformer and measuring the 
@@ -220,16 +190,16 @@ and data is just more convenient for DoA estimation.
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the MUSIC spectrum for
+    pa: PhasedArray to calculate the estimator for
     Rxx: covariance matrix of the array which is used for estimation
     f: center/operating frequency
-    ϕ: azimuth angle for which spectrum is evaluated 
-    θ: elevation angle for which spectrum is evaluated
+    angles: 1xD or 2xD matrix of steering directions.
+        - If 1xD: azimuth angles in radians, elevation assumed zero.
+        - If 2xD: [azimuth; elevation] for D directions in radians.
     w: vector of taper weights for the array (e.g., chebyshev window) 
-    fs: sampling frequency of the steering vector to quantize phase shifts
     c: propagation speed of the wave
 """
-function bartlett(pa::PhasedArray, Rxx, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_0)
+function bartlett(pa::PhasedArray, Rxx, f, angles; w=nothing, c=c_0, coords=:azel)
     
     if isnothing(w)
         W = Matrix(I, Base.length(pa), Base.length(pa))
@@ -238,8 +208,10 @@ function bartlett(pa::PhasedArray, Rxx, f, ϕ, θ=0; w=nothing, fs=nothing, c=c_
         W = diagm(vec(w))
     end
 
-    a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
-    P = a'*W*Rxx*W'*a
+    A = steer(pa, f, angles; c=c, dir=:rx, coords=coords)
+
+    # a'*W*Rxx*W'*a
+    P = vec(sum(conj(A) .* (W*Rxx*W' * A), dims=1))
     return real(P)
 end
 
@@ -254,17 +226,19 @@ and data is just more convenient for DoA estimation.
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the MUSIC spectrum for
-    Rxx: covariance matrix of the array which is used for estimation
-    f: center/operating frequency
-    ϕ: azimuth angle for which spectrum is evaluated 
-    θ: elevation angle for which spectrum is evaluated
-    fs: sampling frequency of the steering vector to quantize phase shifts
-    c: propagation speed of the wave
+    pa: Array to evaluate for
+    Rxx: Covariance matrix (MxM)
+    angles: 1xD or 2xD matrix of [azimuth; elevation] angles in radians
+    c: Propagation speed (default: c_0)
+
+returns:
+--------
+    P: Power spectrum evaluated at each direction
 """
-function capon(pa::PhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
-    a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
-    P = 1/(a'*inv(Rxx)'*a)
+function capon(pa::PhasedArray, Rxx, f, angles; c=c_0, coords=:azel)
+    A = steer(pa, f, angles; c=c, dir=:rx, coords=coords)
+    #P = 1/(a'*inv(Rxx)*a)
+    P = vec(1 ./ sum(conj(A) .* (inv(Rxx) * A), dims=1))
     return real(P)
 end
 
@@ -438,31 +412,28 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
 end
 
 """
-music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
+music(pa::PhasedArray, Rxx, d, f, angles; c=c_0)
 
-Calculates the MUSIC spectrum for direction of arrival estimation.
-Returns a vector of tuples with each tuple holding the two ambigues 
-DOAs corresponding to a source. 
+Calculates the MUSIC spectrum for direction of arrival (DoA) estimation.
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the MUSIC spectrum for
-    Rxx: covariance matrix of the array which is used for estimation
-    d: number of sources
-    f: center/operating frequency
-    ϕ: azimuth angle for which spectrum is evaluated 
-    θ: elevation angle for which spectrum is evaluated
-    fs: sampling frequency of the steering vector to quantize phase shifts
-    c: propagation speed of the wave
+    pa: Array for which the MUSIC spectrum is computed
+    Rxx: Covariance matrix of the received signals
+    d: Number of signal sources (model order)
+    f: Center/operating frequency
+    angles: 1xD vector or 2xD matrix of azimuth and elevation angles. For 1xD input, elevation is assumed zero.
+    c: Propagation speed of the wave (default: c_0)
 """
-function music(pa::PhasedArray, Rxx, d, f, ϕ, θ=0; fs=nothing, c=c_0)
+function music(pa::PhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
     U = eigvecs(Rxx, sortby= λ -> -abs(λ))
 
     Un = U[:, d+1:size(U)[2]]
 
-    a = steerphi(pa, f, ϕ, θ; fs=fs, c=c, direction=Incoming)
+    A = steer(pa, f, angles; c=c, dir=:rx, coords=coords)
 
-    P = a'*a/(a'*Un*Un'*a)
+    #P = a'*a/(a'*Un*Un'*a)
+    P = vec(sum(abs2, A; dims=1) ./ sum(abs2, Un' * A; dims=1))
     return real(P)
 end
 
@@ -483,10 +454,10 @@ arguments:
     optimizer: used optimizer to solve the WSF problem
     maxiters: maximum optimization iterations
 """
-function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
-    p = pa, Rxx, d, f, fs, c
+function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+    p = pa, Rxx, d, f, c
     wsf_cost = function(ϕ, p)
-        pa, Rxx, d, f, fs, c = p
+        pa, Rxx, d, f, c = p
         Λ, U = eigen(Rxx, sortby= λ -> -abs(λ))
 
         Λs = diagm(Λ[1:d])
@@ -500,7 +471,8 @@ function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; fs=nothing, c=c_0, optimizer=Nelde
         Λest = Λs - σ²*I
         W = Λest^2*inv(Λs)
 
-        A = hcat(steerphi.(Ref(pa), f, ϕ; fs=fs, c=c, direction=Incoming)...)
+        #A = hcat(steerphi.(Ref(pa), f, ϕ; fs=fs, c=c, direction=Incoming)...)
+        A = steer(pa, f, ϕ'; c=c, dir=:rx, coords=coords)
         PA = A*inv(A'*A)*A'
 
         cost =  tr((I-PA)*Us*W*Us')
