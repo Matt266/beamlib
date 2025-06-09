@@ -62,8 +62,91 @@ function Base.length(x::NestedArray)
     return sum(length.(x.subarrays))
 end
 
+abstract type Wavefront end
+abstract type PlaneWave <: Wavefront end
+abstract type SphericalWave <: Wavefront end
+
+struct AzEl <: PlaneWave
+    coords::Matrix{<:Number}
+    function AzEl(coords)
+         # coords = [azimtuh, elevation] 2xD matrix
+
+        if ndims(coords) == 0
+            coords = [coords; 0]
+        end
+
+        # only when single az/el pair
+        # transpose changes ndims 
+        # az-only: [az0, az2]', az/el-pair: [az, el]
+        # ndims(transpose([3, 4])) is 2
+        # ndims([3, 4]) is 1
+        if ndims(coords) == 1
+            coords = reshape(coords, 2, 1)
+        end
+
+        M, D = size(coords)
+
+        if M == 1
+            coords = [coords; zeros(2, D)]
+        end
+
+        return new(coords)
+    end
+end
+
+struct WaveVec <: PlaneWave
+    coords::Matrix{<:Number}
+    function WaveVec(coords)
+        # coords = [kx; ky; kz] 3xD matrix
+
+        if ndims(coords) == 0
+            coords = [coords; 0; 0]
+        end
+
+        # only when single k vector
+        # transpose changes ndims
+        # single k vector: [kx, ky, kz]'
+        # multiple kx: [kx, kx, kx]
+        if ndims(coords) == 1
+            coords = reshape(coords, 3, 1)
+        end
+
+        M, D = size(coords)
+
+        if M == 1
+            coords = [coords; zeros(2, D)]
+        elseif M==2
+            coords = [coords; zeros(1, D)]
+        end 
+
+        return new(coords)
+    end
+end
+
+function steer(x::IsotropicArray, f, angles::AzEl; c=c_0)
+    k = 2π * f / c
+
+    az = transpose(angles.coords[1, :])
+    el = transpose(angles.coords[2, :])
+
+    ζ = [cos.(el) .* cos.(az);
+         cos.(el) .* sin.(az);
+         sin.(el)]
+
+    φ = -(k .* (x.r' * ζ))
+
+    return exp.(-1im .* φ)
+end
+
+function steer(x::IsotropicArray, f, angles::WaveVec; c=c_0)
+    k = 2π * f / c  
+    ζ = angles.coords ./ (2π*f/c)
+    φ = k .* (x.r' * ζ)
+    return exp.(-1im .* φ)
+end
+
 """
-steer(x::IsotropicArray, f, angles; c=c_0, dir=:rx, coords=:azel)
+steer(x::IsotropicArray, f, angles; c=c_0, coords=:azel)
 
 Calculates the steering vector/matrix for given azimuth and elevation angles. 
 
@@ -72,10 +155,6 @@ arguments:
     f: Frequency of the signal in Hz.
     angles: Matrix with angles in the format specified in 'coords'
     c: Propagation speed of the wave (default: c_0).
-    dir: Direction for beamforming:
-         - ':rx': Receiving (steer for incoming wave)
-         - ':tx': Transmitting (steer for outgoing wave)
-         (default: ':rx').
     coords: Coordinate system of 'angles':
          - ':azel' (default): interpret angles as azimuth/elevation pairs [az; el]
          - ':k': interpret as wavevector [kx; ky; kz]
@@ -83,86 +162,32 @@ returns:
 --------
     Complex steering matrix of size MxD, where M is the number of array elements and D is the number of angle pairs.
 """
-function steer(x::IsotropicArray, f, angles; c=c_0, dir=:rx, coords=:azel)
-    k = 2π * f / c
-
+function steer(x::IsotropicArray, f, angles; c=c_0, coords=:azel)
     if coords == :azel
-        # angels = [azimtuh, elevation] 2xD matrix
-
-        if ndims(angles) == 0
-            angles = [angles; 0]
-        end
-
-        # only when single az/el pair - transpose changes ndims
-        # ndims(transpose([3, 4])) is 2
-        # ndims([3, 4]) is 1
-        if ndims(angles) == 1
-            angles = reshape(angles, 2, 1)
-        end
-
-        M, D = size(angles)
-
-        az = transpose(angles[1, :])
-        el = M == 1 ? zeros(1, D) : transpose(angles[2, :])
-
-        ζ = [cos.(el) .* cos.(az);
-             cos.(el) .* sin.(az);
-             sin.(el)]
-
-        if dir == :tx
-            φ = (k .* (x.r' * ζ))
-        elseif dir == :rx
-            φ = -(k .* (x.r' * ζ))
-        else
-            throw(ArgumentError("dir must be ':rx' or ':tx'; got: '$(dir)'"))
-        end 
-
-        return exp.(-1im .* φ)
-
+        return steer(x, f, AzEl(angles); c=c)
     elseif coords == :k
-        # angels = [kx; ky; kz] 3xD matrix
-
-        if ndims(angles) == 0
-            angles = [angles; 0; 0]
-        end
-
-        # see quvialent part for mode == :azel
-        if ndims(angles) == 1
-            angles = reshape(angles, 3, 1)
-        end
-
-        M, D = size(angles)
-
-        if M == 1
-            angles = [angles; zeros(2, D)]
-        elseif M==2
-            angles = [angles; zeros(1, D)]
-        end 
-           
-        ζ = angles ./ (2π*f/c)
-        φ = k .* (x.r' * ζ)
-        return exp.(-1im .* φ) 
+        return steer(x, f, WaveVec(angles); c=c)
     else
         throw(ArgumentError("coords must be ':azel' or ':k'; got: '$(mode)'"))
     end
 end
 
-function steer(x::NestedArray, f, angles; c=c_0, dir=:rx, coords=:azel)
-    v_super = steer(x.elements, f, angles; c=c, dir=dir, coords=coords)
-    v_sub = steer.(x.subarrays, Ref(f), Ref(angles); c=c, dir=dir, coords=coords)
+function steer(x::NestedArray, f, angles; c=c_0, coords=:azel)
+    v_super = steer(x.elements, f, angles; c=c, coords=coords)
+    v_sub = steer.(x.subarrays, Ref(f), Ref(angles); c=c, coords=coords)
     return reduce(vcat, map((sup_row, sub_mat) -> sub_mat .* reshape(sup_row, 1, :), eachrow(v_super), v_sub))
 end
 
-function dsb_weights(x::PhasedArray, f, angles; c=c_0, dir=:rx, coords=:azel)
-    return steer(x, f, angles; c=c, dir=dir, coords=coords)/Base.length(x)
+function dsb_weights(x::PhasedArray, f, angles; c=c_0, coords=:azel)
+    return steer(x, f, angles; c=c, coords=coords)/Base.length(x)
 end
 
-function mvdr_weights(x::PhasedArray, Rnn, f, angles; c=c_0, dir=:rx, coords=:azel)
-    v = steer(x, f, angles; c=c, dir=dir, coords=coords)
+function mvdr_weights(x::PhasedArray, Rnn, f, angles; c=c_0, coords=:azel)
+    v = steer(x, f, angles; c=c, coords=coords)
     return (inv(Rnn)*v)/(v'*inv(Rnn)*v)
 end
 
-mpdr_weights(x::PhasedArray, Rxx, f, angles; c=c_0, dir=:rx, coords=:azel) = mvdr_weights(x, Rxx, f, angles; c=c, dir=dir, coords=coords)
+mpdr_weights(x::PhasedArray, Rxx, f, angles; c=c_0, coords=:azel) = mvdr_weights(x, Rxx, f, angles; c=c, coords=coords)
 
 const capon_weights = mpdr_weights
 
@@ -208,7 +233,7 @@ function bartlett(pa::PhasedArray, Rxx, f, angles; w=nothing, c=c_0, coords=:aze
         W = diagm(vec(w))
     end
 
-    A = steer(pa, f, angles; c=c, dir=:rx, coords=coords)
+    A = steer(pa, f, angles; c=c, coords=coords)
 
     # a'*W*Rxx*W'*a
     P = vec(sum(conj(A) .* (W*Rxx*W' * A), dims=1))
@@ -236,7 +261,7 @@ returns:
     P: Power spectrum evaluated at each direction
 """
 function capon(pa::PhasedArray, Rxx, f, angles; c=c_0, coords=:azel)
-    A = steer(pa, f, angles; c=c, dir=:rx, coords=coords)
+    A = steer(pa, f, angles; c=c, coords=coords)
     #P = 1/(a'*inv(Rxx)*a)
     P = vec(1 ./ sum(conj(A) .* (inv(Rxx) * A), dims=1))
     return real(P)
@@ -430,7 +455,7 @@ function music(pa::PhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
 
     Un = U[:, d+1:size(U)[2]]
 
-    A = steer(pa, f, angles; c=c, dir=:rx, coords=coords)
+    A = steer(pa, f, angles; c=c, coords=coords)
 
     #P = a'*a/(a'*Un*Un'*a)
     P = vec(sum(abs2, A; dims=1) ./ sum(abs2, Un' * A; dims=1))
@@ -472,7 +497,7 @@ function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; c=c_0, coords=:azel, optimizer=Nel
         W = Λest^2*inv(Λs)
 
         #A = hcat(steerphi.(Ref(pa), f, ϕ; fs=fs, c=c, direction=Incoming)...)
-        A = steer(pa, f, ϕ'; c=c, dir=:rx, coords=coords)
+        A = steer(pa, f, ϕ'; c=c, coords=coords)
         PA = A*inv(A'*A)*A'
 
         cost =  tr((I-PA)*Us*W*Us')
