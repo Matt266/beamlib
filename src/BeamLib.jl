@@ -123,6 +123,11 @@ struct WaveVec <: PlaneWave
     end
 end
 
+"""
+References:
+-----------
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
 function steer(x::IsotropicArray, f, angles::AzEl; c=c_0)
     k = 2π * f / c
 
@@ -138,6 +143,11 @@ function steer(x::IsotropicArray, f, angles::AzEl; c=c_0)
     return exp.(-1im .* φ)
 end
 
+"""
+References:
+-----------
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
 function steer(x::IsotropicArray, f, angles::WaveVec; c=c_0)
     k = 2π * f / c  
     ζ = angles.coords ./ (2π*f/c)
@@ -161,6 +171,10 @@ arguments:
 returns:
 --------
     Complex steering matrix of size MxD, where M is the number of array elements and D is the number of angle pairs.
+
+References:
+-----------
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
 function steer(x::IsotropicArray, f, angles; c=c_0, coords=:azel)
     if coords == :azel
@@ -172,16 +186,31 @@ function steer(x::IsotropicArray, f, angles; c=c_0, coords=:azel)
     end
 end
 
+"""
+References:
+-----------
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
 function steer(x::NestedArray, f, angles; c=c_0, coords=:azel)
     v_super = steer(x.elements, f, angles; c=c, coords=coords)
     v_sub = steer.(x.subarrays, Ref(f), Ref(angles); c=c, coords=coords)
     return reduce(vcat, map((sup_row, sub_mat) -> sub_mat .* reshape(sup_row, 1, :), eachrow(v_super), v_sub))
 end
 
+"""
+References:
+-----------
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
 function dsb_weights(x::PhasedArray, f, angles; c=c_0, coords=:azel)
     return steer(x, f, angles; c=c, coords=coords)/Base.length(x)
 end
 
+"""
+References:
+-----------
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
 function mvdr_weights(x::PhasedArray, Rnn, f, angles; c=c_0, coords=:azel)
     v = steer(x, f, angles; c=c, coords=coords)
     return (inv(Rnn)*v)/(v'*inv(Rnn)*v)
@@ -195,6 +224,11 @@ function whitenoise(x::IsotropicArray, σ²)
     return σ²*I(Base.length(x))
 end
 
+"""
+References:
+-----------
+W. Herbordt, Sound capture for human / machine interfaces, 2005th ed. Berlin, Germany: Springer, 2005.
+"""
 function diffnoise(x::IsotropicArray, σ², f, c=c_0)
     ω = 2π*f
     k = ω/c
@@ -223,6 +257,10 @@ arguments:
         - If 2xD: [azimuth; elevation] for D directions in radians.
     w: vector of taper weights for the array (e.g., chebyshev window) 
     c: propagation speed of the wave
+
+References:
+-----------
+H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
 function bartlett(pa::PhasedArray, Rxx, f, angles; w=nothing, c=c_0, coords=:azel)
     
@@ -259,6 +297,10 @@ arguments:
 returns:
 --------
     P: Power spectrum evaluated at each direction
+
+References:
+-----------
+H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
 function capon(pa::PhasedArray, Rxx, f, angles; c=c_0, coords=:azel)
     A = steer(pa, f, angles; c=c, coords=coords)
@@ -285,6 +327,10 @@ arguments:
         least squares if 'false'
     side: choose angles on the left (':left'), right (':right'), or both (':both') sides
         of the displacement vector to decide between the two ambigues angles per source.
+
+References:
+-----------
+R. Roy and T. Kailath, ‘ESPRIT-estimation of signal parameters via rotational invariance techniques’, IEEE Trans. Acoust., vol. 37, no. 7, pp. 984–995, Jul. 1989.
 """
 function esprit(Rzz, Δ, d, f; c=c_0, TLS = true, side = :left)
     # number of sensors in the array (p)
@@ -360,6 +406,10 @@ arguments:
         least squares if 'false'
     side: choose angles on the left (':left'), right (':right'), or both (':both') sides
         of the displacement vector to decide between the two ambigues angles per source.
+
+References:
+-----------
+M. Haardt and J. A. Nossek, ‘Unitary ESPRIT: how to obtain increased estimation accuracy with a reduced computational burden’, IEEE Trans. Signal Process., vol. 43, no. 5, pp. 1232–1242, May 1995.
 """
 function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
     # NxN exchange matrix
@@ -449,6 +499,10 @@ arguments:
     f: Center/operating frequency
     angles: 1xD vector or 2xD matrix of azimuth and elevation angles. For 1xD input, elevation is assumed zero.
     c: Propagation speed of the wave (default: c_0)
+
+References:
+-----------
+H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
 function music(pa::PhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
     U = eigvecs(Rxx, sortby= λ -> -abs(λ))
@@ -463,7 +517,7 @@ function music(pa::PhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
 end
 
 """
-wsf(pa::PhasedArray, Rxx, d, ϕ0, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
+wsf(pa::PhasedArray, Rxx, d, DoAs, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
 
 DoA estimation using weighted subspace fitting (WSF) .
 
@@ -472,16 +526,24 @@ arguments:
     pa: PhasedArray to calculate the MUSIC spectrum for
     Rxx: covariance matrix of the array which is used for estimation
     d: number of sources
-    ϕ0: vector of initial DoAs as starting point for WSF
+    DoAs: vector/matrix of initial DoAs as starting point for WSF
     f: center/operating frequency
     fs: sampling frequency of the steering vector to quantize phase shifts
     c: propagation speed of the wave
     optimizer: used optimizer to solve the WSF problem
     maxiters: maximum optimization iterations
+
+References:
+-----------
+M. Viberg and B. Ottersten, ‘Sensor array processing based on subspace fitting’, IEEE Trans. Signal Process., vol. 39, no. 5, pp. 1110–1121, May 1991.
+
+B. Ottersten and M. Viberg, ‘Analysis of subspace fitting based methods for sensor array processing’, in International Conference on Acoustics, Speech, and Signal Processing, Glasgow, UK, 2003.
+
+M. Pesavento, M. Trinh-Hoang, and M. Viberg, ‘Three More Decades in Array Signal Processing Research: An optimization and structure exploitation perspective’, IEEE Signal Process. Mag., vol. 40, no. 4, pp. 92–106, Jun. 2023.
 """
-function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function wsf(pa::PhasedArray, Rxx, d, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
     p = pa, Rxx, d, f, c
-    wsf_cost = function(ϕ, p)
+    wsf_cost = function(angles, p)
         pa, Rxx, d, f, c = p
         Λ, U = eigen(Rxx, sortby= λ -> -abs(λ))
 
@@ -492,12 +554,13 @@ function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; c=c_0, coords=:azel, optimizer=Nel
         Un = U[:, d+1:size(U, 2)]
 
         # estimate noise variance as mean of noise eigenvalues
+        # optimal weights as in Ottersten and Viberg ‘Analysis of subspace fitting based methods for sensor array processing’
         σ² = mean(Λn)
         Λest = Λs - σ²*I
         W = Λest^2*inv(Λs)
 
         #A = hcat(steerphi.(Ref(pa), f, ϕ; fs=fs, c=c, direction=Incoming)...)
-        A = steer(pa, f, ϕ'; c=c, coords=coords)
+        A = steer(pa, f, angles; c=c, coords=coords)
         PA = A*inv(A'*A)*A'
 
         cost =  tr((I-PA)*Us*W*Us')
@@ -505,7 +568,7 @@ function wsf(pa::PhasedArray, Rxx, d, ϕ0, f; c=c_0, coords=:azel, optimizer=Nel
     end
     
     f = OptimizationFunction(wsf_cost, Optimization.AutoForwardDiff())
-    p = OptimizationProblem(f, ϕ0, p)
+    p = OptimizationProblem(f, DoAs, p)
     s = solve(p, optimizer; maxiters=maxiters)
     return s.u
 end
@@ -520,6 +583,10 @@ arguments:
 ----------
     Rxx: covariance matrix of the array which is used for estimation
     N: sample size
+
+References:
+-----------
+M. Wax and T. Kailath, ‘Detection of signals by information theoretic criteria’, IEEE Trans. Acoust., vol. 33, no. 2, pp. 387–392, Apr. 1985.
 """
 function aic(Rxx, N)
     p = size(Rxx, 1)
@@ -548,6 +615,10 @@ arguments:
 ----------
     Rxx: covariance matrix of the array which is used for estimation
     N: sample size
+
+References:
+-----------
+M. Wax and T. Kailath, ‘Detection of signals by information theoretic criteria’, IEEE Trans. Acoust., vol. 33, no. 2, pp. 387–392, Apr. 1985.
 """
 function mdl(Rxx, N)
     p = size(Rxx, 1)
@@ -587,6 +658,10 @@ arguments:
     λ: Regularization parameter for the LASSO problem
     maxit: maximum iterations for optimization
     tol: tolerance for optimization 
+
+References:
+-----------
+Z. Yang, J. Li, P. Stoica, and L. Xie, ‘Sparse methods for direction-of-arrival estimation’, arXiv [cs.IT], 30-Sep-2016.
 """
 function lasso(Y, A, λ=1e-2; maxit=100, tol=1e-6)
     f = LeastSquares(A, Y)
@@ -608,6 +683,10 @@ arguments:
     Y: Data matrix of the array
     A: Dictionary matrix of array response vectors from the angle grid 
     η: Constraint and upper bound on the noise energy (η≥||E||_2). 
+
+References:
+-----------
+Z. Yang, J. Li, P. Stoica, and L. Xie, ‘Sparse methods for direction-of-arrival estimation’, arXiv [cs.IT], 30-Sep-2016.
 """
 function bpdn(Y, A, η=1e-2)
     X = ComplexVariable(size(A)[2], size(Y)[2])
@@ -627,6 +706,12 @@ arguments:
     Y: Data matrix of the array
     A: Dictionary matrix of array response vectors from the angle grid 
     d: number of sources
+
+References:
+-----------
+V. N. Xuan, K. Hartmann, W. Weihs, and O. Loffeld, ‘Modified orthogonal matching pursuit for multiple measurement vector with joint sparsity in super-resolution compressed sensing’, in 2017 51st Asilomar Conference on Signals, Systems, and Computers, Pacific Grove, CA, USA, 2017.
+
+J. Chen and X. Huo, ‘Sparse representations for multiple measurement vectors (MMV) in an over-complete dictionary’, in Proceedings. (ICASSP ’05). IEEE International Conference on Acoustics, Speech, and Signal Processing, 2005, Philadelphia, Pennsylvania, USA, 2006.
 """
 function omp(Y, A, d)
     r = copy(Y)
@@ -659,6 +744,10 @@ arguments:
     Rss: Covariance matrix of the signals
     N: number of snapshots to generate
     norm: normalize so source power adds up to unit power
+
+References:
+------------
+A. J. Barabell, J. Capon, D. F. DeLong, K. D. Senne, and J. R. Johnson, ‘Performance Comparison of Superresolution Array Processing Algorithms’, MIT Lincoln Laboratory, Lexington, MA, May 1984.
 """
 function unconditional_signals(Rss, N; norm=true)
     # number signals
