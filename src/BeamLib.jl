@@ -14,7 +14,7 @@ using ProximalOperators
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
-        aic, mdl, wsf, dml, unconditional_signals
+        aic, mdl, wsf, dml, sml, unconditional_signals
 
 c_0 = 299792458.0
 
@@ -527,7 +527,6 @@ arguments:
 ----------
     pa: PhasedArray to calculate the MUSIC spectrum for
     Rxx: covariance matrix of the array which is used for estimation
-    d: number of sources
     DoAs: vector/matrix of initial DoAs as starting point for WSF
     f: center/operating frequency
     c: propagation speed of the wave
@@ -540,12 +539,15 @@ M. Viberg and B. Ottersten, ‘Sensor array processing based on subspace fitting
 
 B. Ottersten and M. Viberg, ‘Analysis of subspace fitting based methods for sensor array processing’, in International Conference on Acoustics, Speech, and Signal Processing, Glasgow, UK, 2003.
 
+H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
+
 M. Pesavento, M. Trinh-Hoang, and M. Viberg, ‘Three More Decades in Array Signal Processing Research: An optimization and structure exploitation perspective’, IEEE Signal Process. Mag., vol. 40, no. 4, pp. 92–106, Jun. 2023.
 """
-function wsf(pa::PhasedArray, Rxx, d, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
-    p = pa, Rxx, d, f, c
+function wsf(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+    p = pa, Rxx, f, c
     wsf_cost = function(angles, p)
-        pa, Rxx, d, f, c = p
+        pa, Rxx, f, c = p
+        d = size(angles, 2)
         Λ, U = eigen(Rxx, sortby= λ -> -abs(λ))
 
         Λs = diagm(Λ[1:d])
@@ -584,7 +586,7 @@ arguments:
 ----------
     pa: PhasedArray to calculate the MUSIC spectrum for
     Rxx: covariance matrix of the array which is used for estimation
-    DoAs: vector/matrix of initial DoAs as starting point for WSF
+    DoAs: vector/matrix of initial DoAs as starting point
     f: center/operating frequency
     c: propagation speed of the wave
     optimizer: used optimizer to solve the DML problem
@@ -607,6 +609,50 @@ function dml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=Nelde
     end
     
     f = OptimizationFunction(dml_cost, Optimization.AutoForwardDiff())
+    p = OptimizationProblem(f, DoAs, p)
+    s = solve(p, optimizer; maxiters=maxiters)
+    return s.u
+end
+
+"""
+sml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+
+DoA estimation using Stochastic Maximum Likelihood (SML).
+(Also known as Unconditional Maximum Likelihood (UML))
+
+arguments:
+----------
+    pa: PhasedArray to calculate the MUSIC spectrum for
+    Rxx: covariance matrix of the array which is used for estimation
+    DoAs: vector/matrix of initial DoAs as starting point
+    f: center/operating frequency
+    c: propagation speed of the wave
+    optimizer: used optimizer to solve the SML problem
+    maxiters: maximum optimization iterations
+
+References:
+-----------
+H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
+
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
+function sml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+    p = pa, Rxx, f, c
+    sml_cost = function(angles, p)
+        pa, Rxx, f, c = p
+
+        A = steer(pa, f, angles; c=c, coords=coords)
+        PA = A*inv(A'*A)*A'
+
+        M = size(Rxx, 1)
+        d = size(angles, 2)
+
+        # asymptotic Maximum Likelihood (AML) estimator
+        cost = log(det(PA*Rxx*PA+tr((I-PA)*Rxx)*(I-PA)/(M-d)))
+        return real(cost)
+    end
+    
+    f = OptimizationFunction(sml_cost, Optimization.AutoForwardDiff())
     p = OptimizationProblem(f, DoAs, p)
     s = solve(p, optimizer; maxiters=maxiters)
     return s.u
