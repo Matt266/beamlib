@@ -331,6 +331,8 @@ arguments:
 References:
 -----------
 R. Roy and T. Kailath, ‘ESPRIT-estimation of signal parameters via rotational invariance techniques’, IEEE Trans. Acoust., vol. 37, no. 7, pp. 984–995, Jul. 1989.
+
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
 function esprit(Rzz, Δ, d, f; c=c_0, TLS = true, side = :left)
     # number of sensors in the array (p)
