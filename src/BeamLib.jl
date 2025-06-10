@@ -14,7 +14,7 @@ using ProximalOperators
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
-        aic, mdl, wsf, unconditional_signals
+        aic, mdl, wsf, dml, unconditional_signals
 
 c_0 = 299792458.0
 
@@ -530,7 +530,6 @@ arguments:
     d: number of sources
     DoAs: vector/matrix of initial DoAs as starting point for WSF
     f: center/operating frequency
-    fs: sampling frequency of the steering vector to quantize phase shifts
     c: propagation speed of the wave
     optimizer: used optimizer to solve the WSF problem
     maxiters: maximum optimization iterations
@@ -570,6 +569,44 @@ function wsf(pa::PhasedArray, Rxx, d, DoAs, f; c=c_0, coords=:azel, optimizer=Ne
     end
     
     f = OptimizationFunction(wsf_cost, Optimization.AutoForwardDiff())
+    p = OptimizationProblem(f, DoAs, p)
+    s = solve(p, optimizer; maxiters=maxiters)
+    return s.u
+end
+
+
+"""
+dml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+
+DoA estimation using Deterministic Maximum Likelihood (DML).
+
+arguments:
+----------
+    pa: PhasedArray to calculate the MUSIC spectrum for
+    Rxx: covariance matrix of the array which is used for estimation
+    DoAs: vector/matrix of initial DoAs as starting point for WSF
+    f: center/operating frequency
+    c: propagation speed of the wave
+    optimizer: used optimizer to solve the DML problem
+    maxiters: maximum optimization iterations
+
+References:
+-----------
+H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
+"""
+function dml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+    p = pa, Rxx, f, c
+    dml_cost = function(angles, p)
+        pa, Rxx, f, c = p
+
+        A = steer(pa, f, angles; c=c, coords=coords)
+        PA = A*inv(A'*A)*A'
+
+        cost =  tr((I-PA)*Rxx)
+        return real(cost)
+    end
+    
+    f = OptimizationFunction(dml_cost, Optimization.AutoForwardDiff())
     p = OptimizationProblem(f, DoAs, p)
     s = solve(p, optimizer; maxiters=maxiters)
     return s.u
