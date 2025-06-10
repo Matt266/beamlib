@@ -13,7 +13,7 @@ using ProximalOperators
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
-        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, bpdn,
+        whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, ols, bpdn,
         aic, mdl, wsf, dml, sml, unconditional_signals
 
 c_0 = 299792458.0
@@ -818,6 +818,60 @@ function omp(Y, A, d)
     return s
 end
 
+
+"""
+ols(Y, A, d, N)
+
+Orthogonal Least Squares (OLS) DOA estimation. Returns a vector representing the estimated, on-grid, sparse, spatial power spectrum of the signals. Estimated 
+DOAs are the angles corresponding to indices of the non-zero values of the output spectrum.
+
+arguments:
+----------
+    Y: Data matrix of the array
+    A: Dictionary matrix of array response vectors from the angle grid 
+    d: number of sources
+    N: number of atoms selected at each iteration
+
+References:
+-----------
+A. Kaur and S. Budhiraja, ‘Sparse Signal Reconstruction via Orthogonal Least Squares’, in 2014 Fourth International Conference on Advanced Computing & Communication Technologies, Rohtak, India, 2014.
+
+J. Wang and P. Li, ‘Recovery of sparse signals using multiple orthogonal least squares’, IEEE Trans. Signal Process., vol. 65, no. 8, pp. 2049–2062, Apr. 2017.
+
+J. Kim and B. Shim, ‘Multiple orthogonal least squares for joint sparse recovery’, in 2018 IEEE International Symposium on Information Theory (ISIT), Vail, CO, 2018.
+"""
+function ols(Y, A, d, N=1)
+    r = copy(Y)
+    Λ = Int[]
+
+    cost(i) = begin
+        Ψ = A[:, [Λ; i]]
+        PΨ = Ψ*inv(Ψ'*Ψ)*Ψ'
+        return norm((I-PΨ)*Y)^2
+    end
+
+    num_added_atoms = 0
+    while num_added_atoms < d
+        num_atoms_to_add = min(N, d-num_added_atoms)
+
+        candidates = setdiff(1:size(A, 2), Λ)
+        
+        # select N indices that give the smallest cost and add them to the support
+        idx = candidates[partialsortperm(cost.(candidates), 1:num_atoms_to_add)]
+        push!(Λ, idx...)
+
+        Ψ = A[:, Λ]
+        X = Ψ \ Y
+        r = Y - Ψ*X
+
+        num_added_atoms += num_atoms_to_add
+    end
+    
+    Ψ = A[:, Λ]
+    s = zeros(size(A,2))
+    s[Λ] .= norm.(eachrow(Ψ \ Y)).^2
+    return s
+end
 
 """
 unconditional_signals(Rss, N; norm=true)
