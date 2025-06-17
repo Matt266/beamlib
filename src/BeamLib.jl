@@ -356,7 +356,7 @@ function esprit(Rzz, Δ, d, f; c=c_0, TLS = true, side = :left)
         Ψ = -E12*inv(E22)
     else
         # LS-ESPRIT
-        Ψ = pinv(Ex)*Ey
+        Ψ = Ex \ Ey
     end
 
     Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
@@ -452,7 +452,7 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
         Ψ = -E12*inv(E22)
     else
         # LS solution
-        Ψ = pinv(C1)*C2
+        Ψ = C1 \ C2
     end
 
     Φ = eigvals(Ψ, sortby= λ -> -abs(λ))
