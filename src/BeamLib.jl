@@ -660,64 +660,70 @@ end
 
 
 """
-aic(Rxx, N)
+aic(Rxx, K)
 
 Estimates number of sources using the Akaike information criterion (AIC).
 
 arguments:
 ----------
     Rxx: covariance matrix of the array which is used for estimation
-    N: sample size
+    K: sample size
 
 References:
 -----------
 M. Wax and T. Kailath, ‘Detection of signals by information theoretic criteria’, IEEE Trans. Acoust., vol. 33, no. 2, pp. 387–392, Apr. 1985.
+
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function aic(Rxx, N)
-    p = size(Rxx, 1)
-    λ = eigvals(Rxx, sortby= λ -> -abs(λ))
+function aic(Rxx, K)
+    N = size(Rxx, 1)
+    λ = real(eigvals(Rxx, sortby= λ -> -abs(λ)))
+    λ = max.(λ, 0)
 
-    aic = zeros(p)
+    aic = zeros(N)
 
-    for k in 0:p-1
-        λ_n = λ[k+1:end]
-        L = log(StatsBase.geomean(λ_n)/mean(λ_n))
-        aic[k+1] = -L^((p-k)N) + k*(2p-k)
+    for d in 0:N-1
+        λ_n = λ[d+1:end]
+        L = ((N-d)K)*log(mean(λ_n)/StatsBase.geomean(λ_n))
+        aic[d+1] = L + d*(2N-d)
     end
 
     # filter out invalid (Inf, -Inf, NaN) results
-    orders = (0:p-1)[map(!, (isnan.(aic) .|| isinf.(aic)))]
+    orders = (0:N-1)[map(!, (isnan.(aic) .|| isinf.(aic)))]
     aic = aic[map(!, (isnan.(aic) .|| isinf.(aic)))]
     return orders[argmin(aic)]
 end
 
 """
-mdl(Rxx, N)
+mdl(Rxx, K)
 
 Estimates number of sources using the Minimum Description Length (MDL) model selection criteria.
 
 arguments:
 ----------
     Rxx: covariance matrix of the array which is used for estimation
-    N: sample size
+    K: sample size
 
 References:
 -----------
 M. Wax and T. Kailath, ‘Detection of signals by information theoretic criteria’, IEEE Trans. Acoust., vol. 33, no. 2, pp. 387–392, Apr. 1985.
-"""
-function mdl(Rxx, N)
-    p = size(Rxx, 1)
-    λ = eigvals(Rxx, sortby= λ -> -abs(λ))
-    mdl = zeros(p)
 
-    for k in 0:p-1
-        λ_n = λ[k+1:end]
-        L = log(StatsBase.geomean(λ_n)/mean(λ_n))
-        mdl[k+1] = -L^((p-k)N) + 0.5k*(2p-k)log(N)
+H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
+"""
+function mdl(Rxx, K)
+    N = size(Rxx, 1)
+    λ = real(eigvals(Rxx, sortby= λ -> -abs(λ)))
+    λ = max.(λ, 0)
+    mdl = zeros(N)
+
+    for d in 0:N-1
+        λ_n = λ[d+1:end]
+        L = ((N-d)K)*log(mean(λ_n)/StatsBase.geomean(λ_n))
+        mdl[d+1] = L + 0.5*(d*(2N-d)+1)log(K)
     end
 
     # filter out invalid (Inf, -Inf, NaN) results
-    orders = (0:p-1)[map(!, (isnan.(mdl) .|| isinf.(mdl)))]
+    orders = (0:N-1)[map(!, (isnan.(mdl) .|| isinf.(mdl)))]
     mdl = mdl[map(!, (isnan.(mdl) .|| isinf.(mdl)))]
     return orders[argmin(mdl)]
 end
