@@ -10,11 +10,13 @@ using OptimizationOptimJL
 using Optim
 using ProximalAlgorithms
 using ProximalOperators
+using ForwardDiff
+using Roots
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, ols, bpdn,
-        aic, mdl, wsf, dml, sml, unconditional_signals
+        aic, mdl, wsf, dml, sml, unconditional_signals, find_doas
 
 c_0 = 299792458.0
 
@@ -909,6 +911,31 @@ function unconditional_signals(Rss, N; norm=true)
     # correlate sources 
     s = cholesky(Rss).L * w
     return s
+end
+
+"""
+find_doas(d, power_func, angle_limits)
+
+Unoptimized utility function that automates the 1D spectral sweep
+for DoA estimation with methods like bartlett, capon, or music.
+It searches the d highest peaks in the output power spectrum
+given by power_func. Search is restricted to the angle_limits.
+
+arguments:
+----------
+    d: maximum number of DoAs / sources to find
+    power_func: function which returns the output power spectrum for the Search
+                must only take one scalar input parameter: angle in rad
+    angle_limits: tuple holding the search area: (angle_min_rad, angle_max_rad)
+"""
+function find_doas(d, power_func, angle_limits=[0, π])
+    first_derivative(θ) = ForwardDiff.derivative(power_func, θ)
+    second_derivative(θ) = ForwardDiff.derivative(first_derivative, θ)
+    critical_points = find_zeros(first_derivative, angle_limits)
+    maxima_points = critical_points[second_derivative.(critical_points) .< Ref(0)]
+    peaks = power_func.(maxima_points)
+    estimated_doas = maxima_points[sortperm(peaks, rev=true)[1:min(d, length(peaks))]]
+    return estimated_doas
 end
 
 end
