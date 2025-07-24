@@ -731,7 +731,7 @@ function mdl(Rxx, K)
 end
 
 # for solving lasso with LeastSquares from ProximalOperators.jl
-function ProximalAlgorithms.value_and_gradient(f::ProximalOperators.LeastSquares, X)
+function value_and_gradient(f::ProximalOperators.LeastSquares, X)
     val = f(X)
     grad = similar(X)
     gradient!(grad, f, X)
