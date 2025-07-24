@@ -3,6 +3,8 @@ import Base.convert
 import Base.length
 using LinearAlgebra
 using StatsBase
+using ForwardDiff
+using Roots
 using Convex
 using SCS
 using Optimization
@@ -10,8 +12,6 @@ using OptimizationOptimJL
 using Optim
 using ProximalAlgorithms
 using ProximalOperators
-using ForwardDiff
-using Roots
 
 export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
