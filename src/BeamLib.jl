@@ -1,6 +1,4 @@
 module BeamLib
-import Base.convert
-import Base.length
 using LinearAlgebra
 using StatsBase
 using ForwardDiff
@@ -13,25 +11,29 @@ using Optim
 using ProximalAlgorithms
 using ProximalOperators
 
-export PhasedArray, IsotropicArray, ArrayManifold, NestedArray, steer, 
+export PhasedArray, IsotropicArray, PhasedArray, NestedArray, steer, 
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, ols, bpdn,
         aic, mdl, wsf, dml, sml, unconditional_signals, find_doas
 
 c_0 = 299792458.0
 
-# generic phased arrays
-abstract type PhasedArray end
+abstract type ArrayManifold end
 
-# placeholder for future implementations
-# TODO: implement
-abstract type ArrayManifold <: PhasedArray end
+abstract type AbstractPhasedArray end
 
-# phased arrays with only isotropic radiators as elements 
-# perfect for quick evaluation of array factors
-struct IsotropicArray <: PhasedArray
+struct PhasedArray <: AbstractPhasedArray
+    manifold::ArrayManifold
+end
+
+struct NestedArray <: AbstractPhasedArray
+    elements::PhasedArray
+    subarrays::Vector{<:AbstractPhasedArray}
+end
+
+struct IsotropicArrayManifold <: ArrayManifold
     r::Matrix{<:Number}
-    function IsotropicArray(r::Matrix{<:Number})
+    function IsotropicArrayManifold(r::Matrix{<:Number})
         @assert 1 <= size(r)[1] <= 3 "Found invalid shape of input matrix: $(size(r)[1])x$(size(r)[2]). Each column are the 1D, 2D, or 3D coordinates of an element. Input matrix must be of size 1xN, 2xN, or 3xN respectively"
 
         if size(r)[1] == 1
@@ -44,24 +46,24 @@ struct IsotropicArray <: PhasedArray
     end
 end
 
-function IsotropicArray(r::Vector{<:Number})
-    return IsotropicArray(reshape(r, 1, length(r)))
+function IsotropicArrayManifold(r::Vector{<:Number})
+    return IsotropicArrayManifold(reshape(r, 1, length(r)))
 end
 
-IsotropicArray(elements::Number...) = IsotropicArray([e for e in elements])
+IsotropicArrayManifold(elements::Number...) = IsotropicArrayManifold([e for e in elements])
 
+IsotropicArray(args...; kwargs...) = PhasedArray(IsotropicArrayManifold(args...; kwargs...))  
 
-struct NestedArray <: PhasedArray
-    elements::IsotropicArray
-    subarrays::Vector{<:PhasedArray}
+function Base.length(a::IsotropicArrayManifold)
+    return size(a.r)[2]
 end
 
-function Base.length(x::IsotropicArray)
-    return size(x.r)[2]
+function Base.length(pa::PhasedArray)
+    return length(pa.manifold)
 end
 
-function Base.length(x::NestedArray)
-    return sum(length.(x.subarrays))
+function Base.length(pa::NestedArray)
+    return sum(length.(pa.subarrays))
 end
 
 abstract type Wavefront end
@@ -125,12 +127,23 @@ struct WaveVec <: PlaneWave
     end
 end
 
+function steer(pa::PhasedArray, args...; kwargs...)
+    return pa.manifold(args...; kwargs...)
+end
+
+function steer(pa::NestedArray, args...; kwargs...)
+    v_super = steer(pa.elements, args...; kwargs...)
+    v_sub = map(sa -> steer(sa, args...; kwargs...), pa.subarrays)
+    return reduce(vcat, map((sup_row, sub_mat) -> sub_mat .* reshape(sup_row, 1, :), eachrow(v_super), v_sub))
+end
+
 """
 References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function steer(x::IsotropicArray, f, angles::AzEl; c=c_0)
+
+function (a::IsotropicArrayManifold)(f, angles::AzEl; c=c_0)
     k = 2π * f / c
 
     az = transpose(angles.coords[1, :])
@@ -140,7 +153,7 @@ function steer(x::IsotropicArray, f, angles::AzEl; c=c_0)
          cos.(el) .* sin.(az);
          sin.(el)]
 
-    φ = -(k .* (x.r' * ζ))
+    φ = -(k .* (a.r' * ζ))
 
     return exp.(-1im .* φ)
 end
@@ -150,10 +163,10 @@ References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function steer(x::IsotropicArray, f, angles::WaveVec; c=c_0)
+function (a::IsotropicArrayManifold)(f, angles::WaveVec; c=c_0)
     k = 2π * f / c  
     ζ = angles.coords ./ (2π*f/c)
-    φ = k .* (x.r' * ζ)
+    φ = k .* (a.r' * ζ)
     return exp.(-1im .* φ)
 end
 
@@ -178,11 +191,11 @@ References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function steer(x::IsotropicArray, f, angles; c=c_0, coords=:azel)
+function (a::IsotropicArrayManifold)(f, angles; c=c_0, coords=:azel)
     if coords == :azel
-        return steer(x, f, AzEl(angles); c=c)
+        return a(f, AzEl(angles); c=c)
     elseif coords == :k
-        return steer(x, f, WaveVec(angles); c=c)
+        return a(f, WaveVec(angles); c=c)
     else
         throw(ArgumentError("coords must be ':azel' or ':k'; got: '$(mode)'"))
     end
@@ -193,10 +206,8 @@ References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function steer(x::NestedArray, f, angles; c=c_0, coords=:azel)
-    v_super = steer(x.elements, f, angles; c=c, coords=coords)
-    v_sub = steer.(x.subarrays, Ref(f), Ref(angles); c=c, coords=coords)
-    return reduce(vcat, map((sup_row, sub_mat) -> sub_mat .* reshape(sup_row, 1, :), eachrow(v_super), v_sub))
+function dsb_weights(pa::AbstractPhasedArray, f, angles; c=c_0, coords=:azel)
+    return steer(pa, f, angles; c=c, coords=coords)/Base.length(pa)
 end
 
 """
@@ -204,26 +215,17 @@ References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function dsb_weights(x::PhasedArray, f, angles; c=c_0, coords=:azel)
-    return steer(x, f, angles; c=c, coords=coords)/Base.length(x)
-end
-
-"""
-References:
------------
-H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
-"""
-function mvdr_weights(x::PhasedArray, Rnn, f, angles; c=c_0, coords=:azel)
-    v = steer(x, f, angles; c=c, coords=coords)
+function mvdr_weights(pa::AbstractPhasedArray, Rnn, f, angles; c=c_0, coords=:azel)
+    v = steer(pa, f, angles; c=c, coords=coords)
     return (inv(Rnn)*v)/(v'*inv(Rnn)*v)
 end
 
-mpdr_weights(x::PhasedArray, Rxx, f, angles; c=c_0, coords=:azel) = mvdr_weights(x, Rxx, f, angles; c=c, coords=coords)
+mpdr_weights(pa::AbstractPhasedArray, Rxx, f, angles; c=c_0, coords=:azel) = mvdr_weights(pa, Rxx, f, angles; c=c, coords=coords)
 
 const capon_weights = mpdr_weights
 
-function whitenoise(x::IsotropicArray, σ²)
-    return σ²*I(Base.length(x))
+function whitenoise(pa::AbstractPhasedArray, σ²)
+    return σ²*I(length(pa))
 end
 
 """
@@ -231,18 +233,18 @@ References:
 -----------
 W. Herbordt, Sound capture for human / machine interfaces, 2005th ed. Berlin, Germany: Springer, 2005.
 """
-function diffnoise(x::IsotropicArray, σ², f, c=c_0)
+function diffnoise(pa::AbstractPhasedArray, σ², f, c=c_0)
     ω = 2π*f
     k = ω/c
-    p(x, i) = [e for e in x.r[:,i]] 
+    p(x, i) = [e for e in x.manifold.r[:,i]] 
     si(x) = sinc(x/π)
     Γ(x, n, m, k) = si(k*norm(p(x,m)-p(x,n)))
-    n = 1:Base.length(x)
-    return σ²*Γ.(Ref(x), n, n', Ref(k))
+    n = 1:length(pa)
+    return σ²*Γ.(Ref(pa), n, n', Ref(k))
 end
 
 """
-bartlett(pa::PhasedArray, Rxx, angles; w=nothing, c=c_0)
+bartlett(pa::AbstractPhasedArray, Rxx, angles; w=nothing, c=c_0)
 
 Calculates the bartlett spectrum for direction of arrival estimation.
 This is identically to steering a bartlett (delay-and-sum) beamformer and measuring the 
@@ -251,7 +253,7 @@ and data is just more convenient for DoA estimation.
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the estimator for
+    pa: AbstractPhasedArray to calculate the estimator for
     Rxx: covariance matrix of the array which is used for estimation
     f: center/operating frequency
     angles: 1xD or 2xD matrix of steering directions.
@@ -264,7 +266,7 @@ References:
 -----------
 H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
-function bartlett(pa::PhasedArray, Rxx, f, angles; w=nothing, c=c_0, coords=:azel)
+function bartlett(pa::AbstractPhasedArray, Rxx, f, angles; w=nothing, c=c_0, coords=:azel)
     
     if isnothing(w)
         W = Matrix(I, Base.length(pa), Base.length(pa))
@@ -282,7 +284,7 @@ end
 
 
 """
-capon(pa::PhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
+capon(pa::AbstractPhasedArray, Rxx, f, ϕ, θ=0; fs=nothing, c=c_0)
 
 Calculates the capon spectrum for direction of arrival estimation.
 This is identically to steering a capon beamformer and measuring the 
@@ -304,7 +306,7 @@ References:
 -----------
 H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
-function capon(pa::PhasedArray, Rxx, f, angles; c=c_0, coords=:azel)
+function capon(pa::AbstractPhasedArray, Rxx, f, angles; c=c_0, coords=:azel)
     A = steer(pa, f, angles; c=c, coords=coords)
     #P = 1/(a'*inv(Rxx)*a)
     P = vec(1 ./ sum(conj(A) .* (inv(Rxx) * A), dims=1))
@@ -491,7 +493,7 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
 end
 
 """
-music(pa::PhasedArray, Rxx, d, f, angles; c=c_0)
+music(pa::AbstractPhasedArray, Rxx, d, f, angles; c=c_0)
 
 Calculates the MUSIC spectrum for direction of arrival (DoA) estimation.
 
@@ -508,7 +510,7 @@ References:
 -----------
 H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
-function music(pa::PhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
+function music(pa::AbstractPhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
     U = eigvecs(Rxx, sortby= λ -> -abs(λ))
 
     Un = U[:, d+1:size(U)[2]]
@@ -521,13 +523,13 @@ function music(pa::PhasedArray, Rxx, d, f, angles; c=c_0, coords=:azel)
 end
 
 """
-wsf(pa::PhasedArray, Rxx, d, DoAs, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
+wsf(pa::AbstractPhasedArray, Rxx, d, DoAs, f; fs=nothing, c=c_0, optimizer=NelderMead(), maxiters=1e3)
 
 DoA estimation using weighted subspace fitting (WSF) .
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the MUSIC spectrum for
+    pa: AbstractPhasedArray to calculate the wsf estimation for
     Rxx: covariance matrix of the array which is used for estimation
     DoAs: vector/matrix of initial DoAs as starting point for WSF
     f: center/operating frequency
@@ -545,7 +547,7 @@ H. Krim and M. Viberg, ‘Two decades of array signal processing research: the p
 
 M. Pesavento, M. Trinh-Hoang, and M. Viberg, ‘Three More Decades in Array Signal Processing Research: An optimization and structure exploitation perspective’, IEEE Signal Process. Mag., vol. 40, no. 4, pp. 92–106, Jun. 2023.
 """
-function wsf(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function wsf(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
     p = pa, Rxx, f, c
     wsf_cost = function(angles, p)
         pa, Rxx, f, c = p
@@ -580,13 +582,13 @@ end
 
 
 """
-dml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
 
 DoA estimation using Deterministic Maximum Likelihood (DML).
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the MUSIC spectrum for
+    pa: AbstractPhasedArray to calculate the dml estimator for
     Rxx: covariance matrix of the array which is used for estimation
     DoAs: vector/matrix of initial DoAs as starting point
     f: center/operating frequency
@@ -598,7 +600,7 @@ References:
 -----------
 H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
-function dml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
     p = pa, Rxx, f, c
     dml_cost = function(angles, p)
         pa, Rxx, f, c = p
@@ -617,14 +619,14 @@ function dml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=Nelde
 end
 
 """
-sml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+sml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
 
 DoA estimation using Stochastic Maximum Likelihood (SML).
 (Also known as Unconditional Maximum Likelihood (UML))
 
 arguments:
 ----------
-    pa: PhasedArray to calculate the MUSIC spectrum for
+    pa: AbstractPhasedArray to calculate the sml estimator for
     Rxx: covariance matrix of the array which is used for estimation
     DoAs: vector/matrix of initial DoAs as starting point
     f: center/operating frequency
@@ -638,7 +640,7 @@ H. Krim and M. Viberg, ‘Two decades of array signal processing research: the p
 
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function sml(pa::PhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function sml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
     p = pa, Rxx, f, c
     sml_cost = function(angles, p)
         pa, Rxx, f, c = p
