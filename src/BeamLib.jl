@@ -10,8 +10,10 @@ using OptimizationOptimJL
 using Optim
 using ProximalAlgorithms
 using ProximalOperators
+using Interpolations
 
-export PhasedArray, IsotropicArray, PhasedArray, NestedArray, steer, 
+export PhasedArray, IsotropicArray, PhasedArray, NestedArray, steer, IsotropicArrayManifold, SampledArrayManifold,
+        AzEl, WaveVec,
         dsb_weights, bartlett, mvdr_weights, mpdr_weights, capon_weights, capon,
         whitenoise, diffnoise, esprit, music, unitary_esprit, lasso, omp, ols, bpdn,
         aic, mdl, wsf, dml, sml, unconditional_signals, find_doas
@@ -32,8 +34,8 @@ struct NestedArray <: AbstractPhasedArray
 end
 
 struct IsotropicArrayManifold <: ArrayManifold
-    r::Matrix{<:Number}
-    function IsotropicArrayManifold(r::Matrix{<:Number})
+    r::AbstractMatrix
+    function IsotropicArrayManifold(r::AbstractMatrix)
         @assert 1 <= size(r)[1] <= 3 "Found invalid shape of input matrix: $(size(r)[1])x$(size(r)[2]). Each column are the 1D, 2D, or 3D coordinates of an element. Input matrix must be of size 1xN, 2xN, or 3xN respectively"
 
         if size(r)[1] == 1
@@ -46,7 +48,7 @@ struct IsotropicArrayManifold <: ArrayManifold
     end
 end
 
-function IsotropicArrayManifold(r::Vector{<:Number})
+function IsotropicArrayManifold(r::AbstractVector)
     return IsotropicArrayManifold(reshape(r, 1, length(r)))
 end
 
@@ -71,7 +73,7 @@ abstract type PlaneWave <: Wavefront end
 abstract type SphericalWave <: Wavefront end
 
 struct AzEl <: PlaneWave
-    coords::Matrix{<:Number}
+    coords::AbstractMatrix
     function AzEl(coords)
          # coords = [azimtuh, elevation] 2xD matrix
 
@@ -99,7 +101,7 @@ struct AzEl <: PlaneWave
 end
 
 struct WaveVec <: PlaneWave
-    coords::Matrix{<:Number}
+    coords::AbstractMatrix
     function WaveVec(coords)
         # coords = [kx; ky; kz] 3xD matrix
 
@@ -164,9 +166,10 @@ References:
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
 function (a::IsotropicArrayManifold)(f, angles::WaveVec; c=c_0)
-    k = 2π * f / c  
-    ζ = angles.coords ./ (2π*f/c)
-    φ = k .* (a.r' * ζ)
+    #k = 2π * f / c  
+    #ζ = angles.coords ./ k
+    #φ = k .* (a.r' * ζ)
+    φ = a.r' * angles.coords
     return exp.(-1im .* φ)
 end
 
@@ -191,7 +194,7 @@ References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function (a::IsotropicArrayManifold)(f, angles; c=c_0, coords=:azel)
+function (a::ArrayManifold)(f, angles; c=c_0, coords=:azel)
     if coords == :azel
         return a(f, AzEl(angles); c=c)
     elseif coords == :k
@@ -201,13 +204,42 @@ function (a::IsotropicArrayManifold)(f, angles; c=c_0, coords=:azel)
     end
 end
 
+struct SampledArrayManifold <: ArrayManifold
+    c_grid::AbstractVector
+    frequency_grid::AbstractVector
+    spatial_grid::Wavefront
+    responses::AbstractArray
+end
+
+function create_interpolator(a::SampledArrayManifold)
+    num_elements = size(responses)[end]
+    spatial_axes = unique.(eachrow(a.spatial_grid.coords))
+    grid_axes = (a.c_grid, a.frequency_grid, spatial_axes..., 1:num_elements)
+    itp = Interpolations.GriddedInterpolation(grid_axes, a.responses, Interpolations.Linear(), Interpolations.Flat())
+    return itp
+end
+
+# TODO: implement Wavefront type conversion logic.
+# Currently will fail if called with other format than the sampled one,
+# which for now is the intended behaviour 
+# TODO: probably in each Wavefront constructer: constrain values (e.g., azimuth to -π...+π and elevation to 0...π).
+function (a::SampledArrayManifold)(f, angles::Wavefront; c=c_0)
+    num_elements = size(a.responses)[end]
+    itp = create_interpolator(a)
+    angles = convert(typeof(a.spatial_grid), angles)
+
+    # matrix of tuples: each row an element index e, each col an column from the angles 
+    query_points = hcat(map(col -> map(e -> (c, f, col..., e), 1:num_elements), eachcol(angles.coordinates))...)
+    return map(grid_coords -> itp(grid_coords...), query_points)
+end
+
 """
 References:
 -----------
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
 function dsb_weights(pa::AbstractPhasedArray, f, angles; c=c_0, coords=:azel)
-    return steer(pa, f, angles; c=c, coords=coords)/Base.length(pa)
+    return steer(pa, f, angles; c=c, coords=coords)/length(pa)
 end
 
 """
