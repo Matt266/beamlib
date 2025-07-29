@@ -93,7 +93,7 @@ struct AzEl <: PlaneWave
         M, D = size(coords)
 
         if M == 1
-            coords = [coords; zeros(2, D)]
+            coords = [coords; zeros(1, D)]
         end
 
         return new(coords)
@@ -204,19 +204,46 @@ function (a::ArrayManifold)(f, angles; c=c_0, coords=:azel)
     end
 end
 
+"""
+Creates an ArrayManifold from recorded samples.
+'responses' array holding the complex amplitudes should have following dimension order:
+    propagation_speeds - frequencies - spatial coordinates - array elements
+
+E.g., for AzEl this would be (check implemented Wavefront types for supported formats):
+    propagation_speeds - frequencies - azimuths - elevations - array elements
+
+Note that each dimension of size 1 (or less) can be dropped. So, if only azimuths for a
+single frequency are recorded, responses reduces to:
+    azimuths - array elements
+
+You must sample over at least one dimension. If other dependencies (e.g., temperature) are 
+be needed, either create an array of SampledArrayManifolds or implement a custom ArrayManifold subtype.
+"""
 struct SampledArrayManifold <: ArrayManifold
     c_grid::AbstractVector
-    frequency_grid::AbstractVector
-    spatial_grid::Wavefront
+    f_grid::AbstractVector
+    coords_grid::Wavefront
+    num_elements::Int
     responses::AbstractArray
-end
+    keep_axes::AbstractVector
+    itp_mag::AbstractInterpolation
+    itp_phase::AbstractInterpolation
+    function SampledArrayManifold(responses::AbstractArray; c_grid=[0], f_grid=[0], coords_grid=AzEl(0))
+        num_elements = size(responses)[end]
+        coords_axes = sort.(unique.(eachrow(coords_grid.coords)))
 
-function create_interpolator(a::SampledArrayManifold)
-    num_elements = size(responses)[end]
-    spatial_axes = unique.(eachrow(a.spatial_grid.coords))
-    grid_axes = (a.c_grid, a.frequency_grid, spatial_axes..., 1:num_elements)
-    itp = Interpolations.GriddedInterpolation(grid_axes, a.responses, Interpolations.Linear(), Interpolations.Flat())
-    return itp
+        # tuple with all axes of length >1
+        grid_axes = [c_grid, f_grid, coords_axes..., Vector(1:num_elements)]
+        keep_axes = length.(grid_axes) .> 1
+        grid_axes = (grid_axes[keep_axes]...,)
+
+        # resposnes with all axes of length >1
+        flattened_responses = dropdims(responses; dims=Tuple(findall(size(responses) .<= 1)))
+
+        itp_mag = extrapolate(interpolate(grid_axes, abs.(flattened_responses), Gridded(Interpolations.Linear())),Interpolations.Flat())
+        itp_phase = extrapolate(interpolate(grid_axes, angle.(flattened_responses), Gridded(Interpolations.Linear())),Interpolations.Flat())
+        return new(c_grid, f_grid, coords_grid, num_elements, flattened_responses, keep_axes, itp_mag, itp_phase)
+    end
 end
 
 # TODO: implement Wavefront type conversion logic.
@@ -224,13 +251,12 @@ end
 # which for now is the intended behaviour 
 # TODO: probably in each Wavefront constructer: constrain values (e.g., azimuth to -π...+π and elevation to 0...π).
 function (a::SampledArrayManifold)(f, angles::Wavefront; c=c_0)
-    num_elements = size(a.responses)[end]
-    itp = create_interpolator(a)
-    angles = convert(typeof(a.spatial_grid), angles)
+    angles = convert(typeof(a.coords_grid), angles)
 
     # matrix of tuples: each row an element index e, each col an column from the angles 
-    query_points = hcat(map(col -> map(e -> (c, f, col..., e), 1:num_elements), eachcol(angles.coordinates))...)
-    return map(grid_coords -> itp(grid_coords...), query_points)
+    # all axes with size <= 1 will be dropped from the points
+    query_points = hcat(map(col -> map(e -> Tuple([c, f, col..., e][a.keep_axes]), 1:a.num_elements), eachcol(angles.coords))...)
+    return map(query_point -> (a.itp_mag(query_point...)*exp(1im*a.itp_phase(query_point...))), query_points)
 end
 
 """
