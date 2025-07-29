@@ -259,6 +259,10 @@ function (a::SampledArrayManifold)(f, angles::Wavefront; c=c_0)
     return map(query_point -> (a.itp_mag(query_point...)*exp(1im*a.itp_phase(query_point...))), query_points)
 end
 
+function Base.length(a::SampledArrayManifold)
+    return a.num_elements
+end
+
 """
 References:
 -----------
