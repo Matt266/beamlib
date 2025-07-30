@@ -548,11 +548,11 @@ function unitary_esprit(X, J1, Δ, d, f; c=c_0, TLS = true, side = :left)
     ϕ0 = atan(Δ[2], Δ[1])  
 
     # angle estimates to the left of Δ
-    Θ1 = ϕ0 .+ acos.(Μ ./ (k * norm(Δ)))
+    Θ1 = ϕ0 .+ acos.(min.(max.(Μ ./ (k * norm(Δ)), -1), 1))
     Θ1 =  mod.(Θ1 .+ π, 2π) .- π
 
     # angle estimates to the right of Δ
-    Θ2 = ϕ0 .- acos.(Μ ./ (k * norm(Δ)))
+    Θ2 = ϕ0 .- acos.(min.(max.(Μ ./ (k * norm(Δ)), -1), 1))
     Θ2 = mod.(Θ2 .+ π, 2π) .- π
 
     # select ambigues angles left or right
