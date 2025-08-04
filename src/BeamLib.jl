@@ -11,6 +11,7 @@ using Optim
 using ProximalAlgorithms
 using ProximalOperators
 using Interpolations
+using PRIMA
 
 export PhasedArray, IsotropicArray, PhasedArray, NestedArray, steer, IsotropicArrayManifold, SampledArrayManifold,
         AzEl, WaveVec,
@@ -1077,39 +1078,25 @@ function gridsearch(func::Function, grids::Tuple)
     return peak_coords
 end
 
-function refine_peaks(func::Function, peak_coords)
+function refine_peaks(func::Function, peak_coords, grids)
     refined_peak_coords = []
-
+    obj_func(x) = -func(x...)
     for current_coords in peak_coords
-        obj_func(x) = -func(x...)
         initial_guess = collect(current_coords)
-        result = optimize(obj_func, initial_guess, NelderMead())
-        push!(refined_peak_coords, Optim.minimizer(result))
+        lower_bounds = [grids[i][searchsortedlast(grids[i], current_coords[i])] for i in 1:length(grids)]
+        upper_bounds = [grids[i][searchsortedfirst(grids[i], current_coords[i])] for i in 1:length(grids)]
+
+        if lower_bounds == upper_bounds
+            continue
+        end
+
+        result, _ = prima(obj_func, initial_guess; xl=lower_bounds, xu=upper_bounds)
+        push!(refined_peak_coords, result)
     end
 
     return refined_peak_coords
 end
 
-function select_peaks(func::Function, d::Int, peak_coords)
-    # Store peak values and their coordinates as tuples
-    peak_info = [(func(p...), p) for p in peak_coords]
-
-    # Sort the list in descending order based on the peak value (the first element of the tuple)
-    sort!(peak_info, by = first, rev = true)
-    return [p[2] for p in peak_info[1:min(d, end)]]
-end
-
-function find_doas_old(func::Function, d::Int, grids...)
-    initial_peaks = gridsearch(func, grids)
-
-    if isempty(initial_peaks)
-        return Matrix{Float64}(undef, length(grids), 0)
-    end
-
-    refined_peaks = refine_peaks(func, initial_peaks)
-    top_peaks = select_peaks(func, d, refined_peaks)
-    return reduce(hcat, top_peaks)
-end
 
 function merge_close_peaks(func::Function, peak_coords, merge_distance)
     merged_peak_coords = []
@@ -1138,29 +1125,25 @@ function merge_close_peaks(func::Function, peak_coords, merge_distance)
     return [p[1] for p in merged_peak_coords]
 end
 
+function select_peaks(func::Function, d::Int, peak_coords)
+    # Store peak values and their coordinates as tuples
+    peak_info = [(func(p...), p) for p in peak_coords]
+
+    # Sort the list in descending order based on the peak value (the first element of the tuple)
+    sort!(peak_info, by = first, rev = true)
+    return [p[2] for p in peak_info[1:min(d, end)]]
+end
+
 function find_doas(func::Function, d::Int, grids...)
-    # 1. Create a list of all grid points to be used as initial guesses
-    all_grid_points = vec([collect(point) for point in Iterators.product(grids...)])
+    initial_peaks = gridsearch(func, grids)
 
-    # 2. Refine all grid points to off-grid positions
-    # We must convert the vectors to tuples for the refine_peaks function
-    refined_peaks_vecs = refine_peaks(func, [Tuple(p) for p in all_grid_points])
-    
-    # 3. Merge peaks that are close to each other.
-    # The merge tolerance is a heuristic; a reasonable value is a fraction of the grid spacing.
-    grid_spacing_norm = norm([step(g) for g in grids])
-    merged_peaks = merge_close_peaks(func, refined_peaks_vecs, grid_spacing_norm / 2)
-
-    # Handle the case where no peaks are found after merging
-    if isempty(merged_peaks)
+    if isempty(initial_peaks)
         return Matrix{Float64}(undef, length(grids), 0)
     end
-    
-    # 4. Sort the merged peaks by their function value and select the top d
-    top_peaks_list = select_peaks(func, d, merged_peaks)
 
-    # 5. Convert the vector of vectors into a matrix
-    return reduce(hcat, top_peaks_list)
+    refined_peaks = refine_peaks(func, initial_peaks, grids)
+    top_peaks = select_peaks(func, d, refined_peaks)
+    return reduce(hcat, top_peaks)
 end
 
 end
