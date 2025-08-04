@@ -994,29 +994,173 @@ function unconditional_signals(Rss, N; norm=true)
     return s
 end
 
-"""
-find_doas(d, power_func, angle_limits)
+function filter_plateaus(indices)
+    N = length(indices[1])
+    filtered_indices = []
+    indices = Set(indices)
 
-Unoptimized utility function that automates the 1D spectral sweep
-for DoA estimation with methods like bartlett, capon, or music.
-It searches the d highest peaks in the output power spectrum
-given by power_func. Search is restricted to the angle_limits.
+    while !isempty(indices)
+        start_idx = pop!(indices)
 
-arguments:
-----------
-    d: maximum number of DoAs / sources to find
-    power_func: function which returns the output power spectrum for the Search
-                must only take one scalar input parameter: angle in rad
-    angle_limits: tuple holding the search area: (angle_min_rad, angle_max_rad)
-"""
-function find_doas(d, power_func, angle_limits=[0, π])
-    first_derivative(θ) = ForwardDiff.derivative(power_func, θ)
-    second_derivative(θ) = ForwardDiff.derivative(first_derivative, θ)
-    critical_points = find_zeros(first_derivative, angle_limits)
-    maxima_points = critical_points[second_derivative.(critical_points) .< Ref(0)]
-    peaks = power_func.(maxima_points)
-    estimated_doas = maxima_points[sortperm(peaks, rev=true)[1:min(d, length(peaks))]]
-    return estimated_doas
+        # breadth-first search (BFS) to find all connected neighbors
+        queue = [start_idx]
+        plateau_group = [start_idx]
+        min_norm_idx = start_idx
+        min_norm = norm(Tuple(start_idx))
+        while !isempty(queue)
+            current_idx = popfirst!(queue)
+            for neighbor_offset in CartesianIndices(ntuple(_ -> -1:1, N))
+                # Skip the current index itself
+                if all(Tuple(neighbor_offset) .== 0)
+                    continue
+                end
+
+                # Check if the neighbor is in the set of unvisited indices
+                neighbor_idx = current_idx + neighbor_offset
+                if neighbor_idx in indices
+                    push!(plateau_group, neighbor_idx)
+                    push!(queue, neighbor_idx)
+                    delete!(indices, neighbor_idx)
+
+                    # Update the index with the minimum norm
+                    current_norm = norm(Tuple(neighbor_idx))
+                    if current_norm < min_norm
+                        min_norm = current_norm
+                        min_norm_idx = neighbor_idx
+                    end
+                end
+            end
+        end
+        # Add the minimum-norm index from the plateau to the filtered list
+        push!(filtered_indices, min_norm_idx)
+    end
+
+    return filtered_indices
+end
+
+function gridsearch(func::Function, grids::Tuple)
+    grid_indices = CartesianIndices(map(grid -> 1:length(grid), grids))
+    grid_data = [func(map( (i, g) -> g[i], Tuple(idx), grids)...) for idx in grid_indices]
+
+    raw_peak_indices = []
+    for idx in grid_indices
+        is_local_max = true
+        current_value = grid_data[idx]
+
+        for neighbor_offset in CartesianIndices(ntuple(_ -> -1:1, length(grids)))
+            # Skip the current index itself
+            if all(Tuple(neighbor_offset) .== 0)
+                continue
+            end
+            
+            neighbor_idx = idx + neighbor_offset
+
+            # Ensure neighbor is within grid bounds
+            if checkbounds(Bool, grid_data, neighbor_idx)
+                if grid_data[neighbor_idx] > current_value
+                    is_local_max = false
+                    break
+                end
+            end
+        end
+        
+        if is_local_max
+            push!(raw_peak_indices, idx)
+        end
+    end
+    
+    # Filter the raw indices to handle plateaus
+    filtered_indices = filter_plateaus(raw_peak_indices)
+    
+    # Convert filtered indices back to coordinates and return
+    peak_coords = [map((i, g) -> g[i], Tuple(idx), grids) for idx in filtered_indices]
+    return peak_coords
+end
+
+function refine_peaks(func::Function, peak_coords)
+    refined_peak_coords = []
+
+    for current_coords in peak_coords
+        obj_func(x) = -func(x...)
+        initial_guess = collect(current_coords)
+        result = optimize(obj_func, initial_guess, NelderMead())
+        push!(refined_peak_coords, Optim.minimizer(result))
+    end
+
+    return refined_peak_coords
+end
+
+function select_peaks(func::Function, d::Int, peak_coords)
+    # Store peak values and their coordinates as tuples
+    peak_info = [(func(p...), p) for p in peak_coords]
+
+    # Sort the list in descending order based on the peak value (the first element of the tuple)
+    sort!(peak_info, by = first, rev = true)
+    return [p[2] for p in peak_info[1:min(d, end)]]
+end
+
+function find_doas_old(func::Function, d::Int, grids...)
+    initial_peaks = gridsearch(func, grids)
+
+    if isempty(initial_peaks)
+        return Matrix{Float64}(undef, length(grids), 0)
+    end
+
+    refined_peaks = refine_peaks(func, initial_peaks)
+    top_peaks = select_peaks(func, d, refined_peaks)
+    return reduce(hcat, top_peaks)
+end
+
+function merge_close_peaks(func::Function, peak_coords, merge_distance)
+    merged_peak_coords = []
+
+    for peak_coord in peak_coords
+        peak_val = func(peak_coord...)
+        
+        is_merged = false
+        for (i, (unique_peak, unique_val)) in enumerate(merged_peak_coords)
+            # Check if the distance is within the tolerance
+            if norm(peak_coord - unique_peak) < merge_distance
+                is_merged = true
+                # Keep the peak with the higher function value
+                if peak_val > unique_val
+                    merged_peak_coords[i] = (peak_coord, peak_val)
+                end
+                break
+            end
+        end
+        
+        if !is_merged
+            push!(merged_peak_coords, (peak_coord, peak_val))
+        end
+    end
+
+    return [p[1] for p in merged_peak_coords]
+end
+
+function find_doas(func::Function, d::Int, grids...)
+    # 1. Create a list of all grid points to be used as initial guesses
+    all_grid_points = vec([collect(point) for point in Iterators.product(grids...)])
+
+    # 2. Refine all grid points to off-grid positions
+    # We must convert the vectors to tuples for the refine_peaks function
+    refined_peaks_vecs = refine_peaks(func, [Tuple(p) for p in all_grid_points])
+    
+    # 3. Merge peaks that are close to each other.
+    # The merge tolerance is a heuristic; a reasonable value is a fraction of the grid spacing.
+    grid_spacing_norm = norm([step(g) for g in grids])
+    merged_peaks = merge_close_peaks(func, refined_peaks_vecs, grid_spacing_norm / 2)
+
+    # Handle the case where no peaks are found after merging
+    if isempty(merged_peaks)
+        return Matrix{Float64}(undef, length(grids), 0)
+    end
+    
+    # 4. Sort the merged peaks by their function value and select the top d
+    top_peaks_list = select_peaks(func, d, merged_peaks)
+
+    # 5. Convert the vector of vectors into a matrix
+    return reduce(hcat, top_peaks_list)
 end
 
 end
