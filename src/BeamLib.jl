@@ -627,7 +627,7 @@ H. Krim and M. Viberg, ‘Two decades of array signal processing research: the p
 
 M. Pesavento, M. Trinh-Hoang, and M. Viberg, ‘Three More Decades in Array Signal Processing Research: An optimization and structure exploitation perspective’, IEEE Signal Process. Mag., vol. 40, no. 4, pp. 92–106, Jun. 2023.
 """
-function wsf(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function wsf(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=:prima, maxiters=1e3)
     p = pa, Rxx, f, c
     wsf_cost = function(angles, p)
         pa, Rxx, f, c = p
@@ -653,11 +653,22 @@ function wsf(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         cost =  tr((I-PA)*Us*W*Us')
         return real(cost)
     end
-    
-    f = OptimizationFunction(wsf_cost, Optimization.AutoForwardDiff())
-    p = OptimizationProblem(f, DoAs, p)
-    s = solve(p, optimizer; maxiters=maxiters)
-    return s.u
+
+    if optimizer == :prima
+        # prima does not require parameters 
+        # but starting points must be a vector
+        shape = size(DoAs)
+        function obj_func(angles)
+            return wsf_cost(reshape(angles, shape), p)
+        end
+        result, _ = prima(obj_func, vec(DoAs))
+        return reshape(result, shape)
+    else
+        f = OptimizationFunction(wsf_cost, Optimization.AutoForwardDiff())
+        p = OptimizationProblem(f, DoAs, p)
+        s = solve(p, optimizer; maxiters=maxiters)
+        return s.u
+    end
 end
 
 
@@ -680,7 +691,7 @@ References:
 -----------
 H. Krim and M. Viberg, ‘Two decades of array signal processing research: the parametric approach’, IEEE Signal Process. Mag., vol. 13, no. 4, pp. 67–94, Jul. 1996.
 """
-function dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=:prima, maxiters=1e3)
     p = pa, Rxx, f, c
     dml_cost = function(angles, p)
         pa, Rxx, f, c = p
@@ -691,11 +702,22 @@ function dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         cost =  tr((I-PA)*Rxx)
         return real(cost)
     end
-    
-    f = OptimizationFunction(dml_cost, Optimization.AutoForwardDiff())
-    p = OptimizationProblem(f, DoAs, p)
-    s = solve(p, optimizer; maxiters=maxiters)
-    return s.u
+
+    if optimizer == :prima
+        # prima does not require parameters 
+        # but starting points must be a vector
+        shape = size(DoAs)
+        function obj_func(angles)
+            return dml_cost(reshape(angles, shape), p)
+        end
+        result, _ = prima(obj_func, vec(DoAs))
+        return reshape(result, shape)
+    else
+        f = OptimizationFunction(dml_cost, Optimization.AutoForwardDiff())
+        p = OptimizationProblem(f, DoAs, p)
+        s = solve(p, optimizer; maxiters=maxiters)
+        return s.u
+    end
 end
 
 """
@@ -720,7 +742,7 @@ H. Krim and M. Viberg, ‘Two decades of array signal processing research: the p
 
 H. L. Van Trees, Optimum array processing. Nashville, TN: John Wiley & Sons, 2002.
 """
-function sml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=NelderMead(), maxiters=1e3)
+function sml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimizer=:prima, maxiters=1e3)
     p = pa, Rxx, f, c
     sml_cost = function(angles, p)
         pa, Rxx, f, c = p
@@ -735,11 +757,23 @@ function sml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         cost = log(det(PA*Rxx*PA+tr((I-PA)*Rxx)*(I-PA)/(M-d)))
         return real(cost)
     end
-    
-    f = OptimizationFunction(sml_cost, Optimization.AutoForwardDiff())
-    p = OptimizationProblem(f, DoAs, p)
-    s = solve(p, optimizer; maxiters=maxiters)
-    return s.u
+
+    if optimizer == :prima
+        # prima does not require parameters 
+        # but starting points must be a vector
+        shape = size(DoAs)
+        function obj_func(angles)
+            return sml_cost(reshape(angles, shape), p)
+        end
+        result, _ = prima(obj_func, vec(DoAs))
+        return reshape(result, shape)
+    else
+        # e.g., optimizer=NelderMead()
+        f = OptimizationFunction(sml_cost, Optimization.AutoForwardDiff())
+        p = OptimizationProblem(f, DoAs, p)
+        s = solve(p, optimizer; maxiters=maxiters)
+        return s.u
+    end
 end
 
 
