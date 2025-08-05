@@ -664,6 +664,7 @@ function wsf(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         result, _ = prima(obj_func, vec(DoAs))
         return reshape(result, shape)
     else
+        # e.g., optimizer=NelderMead()
         f = OptimizationFunction(wsf_cost, Optimization.AutoForwardDiff())
         p = OptimizationProblem(f, DoAs, p)
         s = solve(p, optimizer; maxiters=maxiters)
@@ -713,6 +714,7 @@ function dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         result, _ = prima(obj_func, vec(DoAs))
         return reshape(result, shape)
     else
+        # e.g., optimizer=NelderMead()
         f = OptimizationFunction(dml_cost, Optimization.AutoForwardDiff())
         p = OptimizationProblem(f, DoAs, p)
         s = solve(p, optimizer; maxiters=maxiters)
@@ -1033,7 +1035,7 @@ end
 Automates spectral search for maxima corresponding to DoAs like encountered in MUSIC.
 Define a function func(coords...) that returns the power spectrum (or any real valued spectrum)
 for the specified coordinates. The d highest maxima will be returned. You must give 
-an initial grid for each coordinare axes that is fine enough to resolve each peak. 
+an initial grid for each coordinate axes that is fine enough to resolve each peak. 
 """
 function find_doas(func::Function, d::Int, grids...; merge_distance = 0.01)
     function gridsearch(func::Function, grids::Tuple)
