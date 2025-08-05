@@ -874,18 +874,12 @@ References:
 -----------
 Z. Yang, J. Li, P. Stoica, and L. Xie, ‘Sparse methods for direction-of-arrival estimation’, arXiv [cs.IT], 30-Sep-2016.
 """
-function lasso(Y, A, λ=1e-2; maxit=100, tol=1e-6, solver=:sfista)
+function lasso(Y, A, λ=1e-2; maxit=100, tol=1e-6)
     f = LeastSquares(A, Y)
     g = NormL21(λ, 2)
     X0 = zeros(ComplexF64, size(A,2), size(Y,2))
-    if solver == :ffb
-        solve = ProximalAlgorithms.FastForwardBackward(maxit=maxit, tol=tol)
-    elseif solver == :sfista
-        solve = ProximalAlgorithms.SFISTA(maxit=maxit, tol=tol, Lf = opnorm(A)^2)
-    else
-        throw(ArgumentError("unsupported solver; got: '$(solver)'"))
-    end
-    solution, _ = solve(x0=X0, f=f, g=g)
+    ffb = ProximalAlgorithms.FastForwardBackward(maxit=maxit, tol=tol)
+    solution, _ = ffb(x0=X0, f=f, g=g)
     return norm.(eachrow(solution), 2).^2
 end
 
