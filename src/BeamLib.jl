@@ -877,7 +877,7 @@ Z. Yang, J. Li, P. Stoica, and L. Xie, ‘Sparse methods for direction-of-arriva
 function lasso(Y, A, λ=1e-2; maxit=100, tol=1e-6, kwargs...)
     f = LeastSquares(A, Y)
     g = NormL21(λ, 2)
-    X0 = zeros(ComplexF64, size(A,2), size(Y,2))
+    X0 = similar(A, promote_type(eltype(A), eltype(Y)), size(A,2), size(Y,2))
     ffb = ProximalAlgorithms.FastForwardBackward(;maxit=maxit, tol=tol, kwargs...)
     solution, _ = ffb(x0=X0, f=f, g=g)
     return norm.(eachrow(solution), 2).^2
