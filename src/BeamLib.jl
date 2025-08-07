@@ -349,9 +349,9 @@ H. Krim and M. Viberg, ‘Two decades of array signal processing research: the p
 function bartlett(pa::AbstractPhasedArray, Rxx, f, angles; w=nothing, c=c_0, coords=:azel)
     
     if isnothing(w)
-        W = Matrix(I, Base.length(pa), Base.length(pa))
+        W = I
     else 
-        assert(Base.length(w) == Base.length(pa))
+        assert(length(w) == length(pa))
         W = diagm(vec(w))
     end
 
@@ -989,8 +989,9 @@ function ols(Y, A, d)
     end
     
     Ψ = A[:, Λ]
-    s = zeros(size(A,2))
-    s[Λ] .= norm.(eachrow(Ψ \ Y)).^2
+    s_eltype = real(promote_type(eltype(A), eltype(Y)))
+    s = fill!(similar(A, s_eltype, size(A,2)), zero(s_eltype))
+    s[Λ] .= vec(sum(abs2, Ψ \ Y, dims=2))
     return s
 end
 
