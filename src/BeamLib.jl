@@ -877,10 +877,12 @@ Z. Yang, J. Li, P. Stoica, and L. Xie, ‘Sparse methods for direction-of-arriva
 function lasso(Y, A, λ=1e-2; maxit=100, tol=1e-6, kwargs...)
     f = LeastSquares(A, Y)
     g = NormL21(λ, 2)
-    X0 = similar(A, promote_type(eltype(A), eltype(Y)), size(A,2), size(Y,2))
+
+    X0_eltype = promote_type(eltype(A), eltype(Y))
+    X0 = fill!(similar(A, X0_eltype, size(A,2), size(Y,2)), zero(X0_eltype))
     ffb = ProximalAlgorithms.FastForwardBackward(;maxit=maxit, tol=tol, kwargs...)
     solution, _ = ffb(x0=X0, f=f, g=g)
-    return norm.(eachrow(solution), 2).^2
+    return vec(sum(abs2, solution, dims=2))
 end
 
 """
@@ -930,7 +932,7 @@ function omp(Y, A, d)
 
     for _ in 1:d
         corr = A'*r
-        idx = argmax(norm.(eachrow(corr)))
+        idx = argmax(sqrt.(vec(sum(abs2, corr, dims=2))))
         push!(Λ, idx)
 
         Ψ = A[:, Λ]
@@ -939,8 +941,9 @@ function omp(Y, A, d)
     end
     
     Ψ = A[:, Λ]
-    s = zeros(size(A,2))
-    s[Λ] .= norm.(eachrow(Ψ \ Y)).^2
+    s_eltype = real(promote_type(eltype(A), eltype(Y)))
+    s = fill!(similar(A, s_eltype, size(A,2)), zero(s_eltype))
+    s[Λ] .= vec(sum(abs2, Ψ \ Y, dims=2))
     return s
 end
 
