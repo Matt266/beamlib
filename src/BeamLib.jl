@@ -648,7 +648,8 @@ function wsf(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
 
         #A = hcat(steerphi.(Ref(pa), f, ϕ; fs=fs, c=c, direction=Incoming)...)
         A = steer(pa, f, angles; c=c, coords=coords)
-        PA = A*inv(A'*A)*A'
+        #PA = A*inv(A'*A)*A'
+        PA = A*pinv(A)
 
         cost =  tr((I-PA)*Us*W*Us')
         return real(cost)
@@ -698,7 +699,8 @@ function dml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         pa, Rxx, f, c = p
 
         A = steer(pa, f, angles; c=c, coords=coords)
-        PA = A*inv(A'*A)*A'
+        #PA = A*inv(A'*A)*A'
+        PA = A*pinv(A)
 
         cost =  tr((I-PA)*Rxx)
         return real(cost)
@@ -750,7 +752,8 @@ function sml(pa::AbstractPhasedArray, Rxx, DoAs, f; c=c_0, coords=:azel, optimiz
         pa, Rxx, f, c = p
 
         A = steer(pa, f, angles; c=c, coords=coords)
-        PA = A*inv(A'*A)*A'
+        #PA = A*inv(A'*A)*A'
+        PA = A*pinv(A)
 
         M = size(Rxx, 1)
         d = size(angles, 2)
